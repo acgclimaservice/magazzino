@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import UniqueConstraint, CheckConstraint, Index
+from sqlalchemy import UniqueConstraint, CheckConstraint, Index, func
 from .extensions import db
 
 # Modelli
@@ -45,7 +45,7 @@ class Mastrino(db.Model):
     descrizione = db.Column(db.String(200), nullable=False)
     tipo = db.Column(db.String(10), nullable=False)  # 'ACQUISTO' o 'RICAVO'
 
-class Partner(db.Model):  # Cliente o Fornitore
+class Partner(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(150), unique=True, nullable=False)
     tipo = db.Column(db.String(20), nullable=False)  # 'Cliente' o 'Fornitore'
@@ -56,21 +56,25 @@ class Documento(db.Model):
         Index('ix_doc_anno_tipo_num', 'anno', 'tipo', 'numero'),
     )
     id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(20), nullable=False)  # 'DDT_IN' o 'DDT_OUT'
-    numero = db.Column(db.Integer, nullable=False)
-    anno = db.Column(db.Integer, nullable=False, default=lambda: datetime.utcnow().year)
-    data = db.Column(db.Date, nullable=False)
-    status = db.Column(db.String(20), default='Bozza')
+    tipo = db.Column(db.String(20), nullable=False)
+    
+    # --- MODIFICHE APPLICATE QUI ---
+    numero = db.Column(db.Integer, nullable=True) # Può essere nullo per le bozze
+    anno = db.Column(db.Integer, nullable=True)   # Può essere nullo per le bozze
+    data = db.Column(db.Date, nullable=True)      # Può essere nulla per le bozze
+    data_creazione = db.Column(db.DateTime, nullable=False, server_default=func.now()) # Data creazione bozza
+    riferimento_fornitore = db.Column(db.String(100)) # Es. "DDT 123 del 15/08/2025"
+    # --- FINE MODIFICHE ---
+
+    status = db.Column(db.String(20), default='Bozza', nullable=False)
     partner_id = db.Column(db.Integer, db.ForeignKey('partner.id'), nullable=False)
     magazzino_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'), nullable=False)
-    # Commessa collegata al cliente finale (opzionale)
-    commessa_id = db.Column(db.Integer, db.ForeignKey('partner.id'), nullable=True)
-    partner = db.relationship('Partner', foreign_keys=[partner_id])
-    commessa = db.relationship('Partner', foreign_keys=[commessa_id])
+    
+    partner = db.relationship('Partner')
     magazzino = db.relationship('Magazzino')
-    commessa = db.relationship('Partner', foreign_keys=[commessa_id])
     righe = db.relationship('RigaDocumento', backref='documento', lazy='dynamic', cascade="all, delete-orphan")
     allegati = db.relationship('Allegato', backref='documento', lazy=True, cascade="all, delete-orphan")
+    movimenti = db.relationship('Movimento', backref='documento', lazy=True)
 
 class RigaDocumento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,7 +92,7 @@ class Movimento(db.Model):
     data = db.Column(db.DateTime, default=datetime.now)
     articolo_id = db.Column(db.Integer, db.ForeignKey('articolo.id'), nullable=False)
     quantita = db.Column(db.Numeric(14, 3), nullable=False)
-    tipo = db.Column(db.String(20), nullable=False)  # 'carico', 'scarico', 'trasferimento'
+    tipo = db.Column(db.String(20), nullable=False)
     magazzino_partenza_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'))
     magazzino_arrivo_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'))
     documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'))
@@ -101,6 +105,6 @@ class Allegato(db.Model):
     documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'), nullable=False)
     filename = db.Column(db.String(255), nullable=False)
     mime = db.Column(db.String(100))
-    path = db.Column(db.String(400), nullable=False)  # path relativo a UPLOAD_FOLDER
+    path = db.Column(db.String(400), nullable=False)
     size = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
