@@ -14,8 +14,14 @@
   <tbody>
     {% for doc in docs %}
     <tr class="border-t">
-      <td class="p-2">{{ doc.numero }}/{{ doc.anno }}</td>
-      <td class="p-2">{{ doc.data }}</td>
+      <td class="p-2">
+        {% if doc.numero and doc.anno %}
+          {{ doc.numero }}/{{ doc.anno }}
+        {% else %}
+          <span class="text-gray-400">- Bozza -</span>
+        {% endif %}
+      </td>
+      <td class="p-2">{{ doc.data or '' }}</td>
       <td class="p-2">{{ doc.partner.nome if doc.partner else '' }}</td>
       <td class="p-2">{{ doc.magazzino.codice if doc.magazzino else '' }}</td>
       <td class="p-2">{{ doc.commessa.nome if doc.commessa else "" }}</td>
@@ -25,7 +31,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td class="p-2 text-center text-gray-500" colspan="6">Nessun documento</td></tr>
+    <tr><td class="p-2 text-center text-gray-500" colspan="7">Nessun documento</td></tr>
     {% endfor %}
   </tbody>
 </table>
