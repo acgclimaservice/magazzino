@@ -4,6 +4,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.lib.units import inch
+from decimal import Decimal
 
 from ..models import Documento, RigaDocumento
 
@@ -45,13 +46,18 @@ def export_document_pdf(doc: Documento) -> bytes:
     
     # Dati righe - Aggiunto Mastrino
     for r in rows:
+        # Calcolo sicuro del totale
+        quantita = r.quantita or Decimal('0')
+        prezzo = r.prezzo or Decimal('0')
+        totale_riga = quantita * prezzo
+        
         table_data.append([
             r.articolo.codice_interno if r.articolo else '',
             Paragraph(r.descrizione or '', styles['Normal']),
-            f"{r.quantita:.2f}",
-            f"{r.prezzo:.2f}",
+            f"{quantita:.2f}",
+            f"{prezzo:.2f}",
             r.mastrino_codice or '',
-            f"{(r.quantita * r.prezzo):.2f}"
+            f"{totale_riga:.2f}"
         ])
 
     # Creazione tabella e stile
@@ -59,7 +65,7 @@ def export_document_pdf(doc: Documento) -> bytes:
     righe_table = Table(table_data, colWidths=col_widths)
     righe_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitespoke),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('ALIGN', (2,1), (-1,-1), 'RIGHT'), # Allinea a destra qta, prezzo, totale
         ('ALIGN', (4,1), (4,-1), 'LEFT'), # Allinea a sinistra mastrino
