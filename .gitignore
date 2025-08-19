@@ -1,0 +1,13 @@
+# File di configurazione con segreti
+#.env
+instance/
+uploads/
+
+# Database
+*.db
+*.bak
+
+# File temporanei di Python
+__pycache__/
+MagazzinoPro/__pycache__/
+app/__pycache__/
