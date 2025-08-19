@@ -1,23 +1,24 @@
 {% extends "_base.html" %}
-{% block title %}Nuovo DDT IN{% endblock %}
+{% block title %}Nuovo DDT IN (Manuale){% endblock %}
 {% block content %}
 <div class="bg-white p-4 rounded-xl shadow max-w-3xl">
-  <h1 class="text-lg font-semibold mb-3">Nuovo DDT IN (manuale)</h1>
-  <form method="post" action="{{ url_for('documents.new_in_save') }}" class="grid md:grid-cols-3 gap-3">
-    <div>
-      <label class="block text-xs text-gray-500">Data</label>
-      <input type="date" name="data" class="border rounded p-2 w-full" value="{{ (today|string)[:10] }}">
+  <h1 class="text-lg font-semibold mb-3">Nuovo DDT IN (Manuale)</h1>
+  <p class="text-sm text-gray-600 mb-4">Crea una nuova bozza di DDT di ingresso. Potrai aggiungere gli articoli nella schermata successiva.</p>
+  
+  <form method="post" action="{{ url_for('documents.new_in_save') }}" class="grid md:grid-cols-2 gap-4">
+    
+    <div class="md:col-span-2">
+      <label class="block text-xs text-gray-500">Fornitore</label>
+      <input name="fornitore" class="border rounded p-2 w-full" placeholder="Ragione sociale" required>
     </div>
+
     <div>
-      <label class="block text-xs text-gray-500">Numero</label>
-      <input name="numero" class="border rounded p-2 w-full" required>
-    </div>
-    <div>
-      <label class="block text-xs text-gray-500">Magazzino</label>
+      <label class="block text-xs text-gray-500">Magazzino di Destinazione</label>
       <select name="magazzino_id" class="border rounded p-2 w-full">
         {% for m in magazzini %}<option value="{{ m.id }}">{{ m.codice }} — {{ m.nome }}</option>{% endfor %}
       </select>
     </div>
+
     <div>
       <label class="block text-xs text-gray-500">Commessa (Cliente)</label>
       <select name="commessa_id" class="border rounded p-2 w-full">
@@ -25,12 +26,9 @@
         {% for c in clienti %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
       </select>
     </div>
-    <div class="md:col-span-3">
-      <label class="block text-xs text-gray-500">Fornitore</label>
-      <input name="fornitore" class="border rounded p-2 w-full" placeholder="Ragione sociale" required>
-    </div>
-    <div class="md:col-span-3">
-      <button class="px-3 py-2 rounded bg-indigo-600 text-white">Crea</button>
+
+    <div class="md:col-span-2 mt-2">
+      <button type="submit" class="px-3 py-2 rounded bg-indigo-600 text-white">Crea Bozza e Aggiungi Righe</button>
       <a href="{{ url_for('documents.documents_in') }}" class="ml-2 px-3 py-2 rounded border">Annulla</a>
     </div>
   </form>
