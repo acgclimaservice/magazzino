@@ -106,7 +106,6 @@
     } else if (docData.status === 'Confermato') {
        actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="/files/export-document/' + docId + '.pdf">Esporta PDF</a>';
     }
-    // FIX: Rimosso backslash da url_for
     actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for("documents.documents_in") }}">Torna all\'archivio</a>';
     bindActionEvents();
   }
@@ -166,45 +165,49 @@
   }
 
   // --- LOGICA API ---
-  async function apiCall(url, options) {
+  function apiCall(url, options) {
     options = options || {};
-    try {
-      var res = await fetch(url, options);
-      var data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || 'Errore HTTP ' + res.status);
-      }
-      return data;
-    } catch (e) {
-      alert('Errore di comunicazione: ' + e.message);
-      throw e;
-    }
+    return fetch(url, options).then(function(res) {
+        return res.json().then(function(data) {
+            if (!res.ok || !data.ok) {
+                throw new Error(data.error || 'Errore HTTP ' + res.status);
+            }
+            return data;
+        });
+    }).catch(function(e) {
+        alert('Errore di comunicazione: ' + e.message);
+        throw e;
+    });
   }
   
-  async function loadData() {
-    var data = await apiCall('/api/documents/' + docId + '/json');
-    docData = data.doc;
-    render();
+  function loadData() {
+    apiCall('/api/documents/' + docId + '/json')
+      .then(function(data) {
+        docData = data.doc;
+        render();
+      });
   }
 
   // --- BINDING EVENTI ---
   function bindActionEvents() {
     var btnConfirm = document.getElementById('btn-confirm');
     if (btnConfirm) {
-      btnConfirm.addEventListener('click', async function() {
+      btnConfirm.addEventListener('click', function() {
         if (confirm('Sei sicuro di voler confermare questo DDT? Verranno assegnati numero e data di oggi. L\'operazione è irreversibile.')) {
-          await apiCall('/api/documents/' + docId + '/confirm', { method: 'POST' });
-          await loadData();
+          apiCall('/api/documents/' + docId + '/confirm', { method: 'POST' })
+            .then(loadData);
         }
       });
     }
 
     var btnDeleteDraft = document.getElementById('btn-delete-draft');
     if (btnDeleteDraft) {
-      btnDeleteDraft.addEventListener('click', async function() {
+      btnDeleteDraft.addEventListener('click', function() {
         if (confirm('Sei sicuro di voler eliminare questa bozza? L\'operazione è irreversibile.')) {
-          await apiCall('/api/documents/' + docId + '/delete-draft', { method: 'POST' });
-          window.location.href = "{{ url_for('documents.documents_in') }}";
+          apiCall('/api/documents/' + docId + '/delete-draft', { method: 'POST' })
+            .then(function() {
+              window.location.href = "{{ url_for('documents.documents_in') }}";
+            });
         }
       });
     }
@@ -212,17 +215,17 @@
 
   function bindLineEvents() {
     document.querySelectorAll('.btn-delete-line').forEach(function(btn) {
-      btn.addEventListener('click', async function(e) {
+      btn.addEventListener('click', function(e) {
         var lineId = e.target.dataset.lineId;
         if (confirm('Sei sicuro di voler eliminare questa riga?')) {
-          await apiCall('/api/documents/lines/' + lineId + '/delete', { method: 'POST' });
-          await loadData();
+          apiCall('/api/documents/lines/' + lineId + '/delete', { method: 'POST' })
+            .then(loadData);
         }
       });
     });
   }
 
-  document.getElementById('add-line-form').addEventListener('submit', async function(e) {
+  document.getElementById('add-line-form').addEventListener('submit', function(e) {
     e.preventDefault();
     var articoloId = document.getElementById('add-line-articolo-id').value;
     var qty = document.getElementById('add-line-qty').value;
@@ -233,7 +236,7 @@
       return;
     }
 
-    await apiCall('/api/documents/' + docId + '/add-line', {
+    apiCall('/api/documents/' + docId + '/add-line', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -241,12 +244,13 @@
         quantita: qty,
         prezzo: price
       })
+    })
+    .then(function() {
+      e.target.reset();
+      document.getElementById('add-line-search').value = '';
+      document.getElementById('add-line-articolo-id').value = '';
+      loadData();
     });
-    
-    e.target.reset();
-    document.getElementById('add-line-search').value = '';
-    document.getElementById('add-line-articolo-id').value = '';
-    await loadData();
   });
 
   // --- Inizializzazione ---
