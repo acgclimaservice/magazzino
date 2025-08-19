@@ -34,7 +34,16 @@ def export_document_pdf(doc: Documento) -> bytes:
         ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
     ]))
     story.append(header_table)
-    story.append(Spacer(1, 0.3*inch))
+    story.append(Spacer(1, 0.1*inch))
+
+    # Info Allegati
+    if doc.allegati:
+        allegati_str = "Allegati: " + ", ".join([a.filename for a in doc.allegati])
+        story.append(Paragraph(allegati_str, styles['Normal']))
+        story.append(Spacer(1, 0.2*inch))
+    else:
+        story.append(Spacer(1, 0.3*inch))
+
 
     # Tabella righe
     rows = doc.righe.order_by(RigaDocumento.id).all()
@@ -65,7 +74,7 @@ def export_document_pdf(doc: Documento) -> bytes:
     righe_table = Table(table_data, colWidths=col_widths)
     righe_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), # FIX: Corretto da whitespoke a whitesmoke
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('ALIGN', (2,1), (-1,-1), 'RIGHT'), # Allinea a destra qta, prezzo, totale
         ('ALIGN', (4,1), (4,-1), 'LEFT'), # Allinea a sinistra mastrino
