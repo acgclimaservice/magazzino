@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from sqlalchemy import or_
 from decimal import Decimal as D
 from datetime import datetime, date
 
@@ -17,12 +18,6 @@ def _safe_float(val, default=0.0):
 
 
 def _row_to_front_dict(r: RigaDocumento):
-    um = getattr(r, "um", None)
-    if not um and getattr(r, "articolo", None) is not None:
-        um = getattr(r.articolo, "um", None)
-    if not um:
-        um = "PZ"
-
     codice_interno = None
     codice_fornitore = None
     if getattr(r, "articolo", None) is not None:
@@ -35,7 +30,6 @@ def _row_to_front_dict(r: RigaDocumento):
         "codice_interno": codice_interno,
         "codice_fornitore": codice_fornitore,
         "descrizione": getattr(r, "descrizione", "") or "",
-        "um": um,
         "quantita": _safe_float(getattr(r, "quantita", 0)),
         "prezzo": _safe_float(getattr(r, "prezzo", 0)),
         "mastrino_codice": getattr(r, "mastrino_codice", None),
@@ -182,3 +176,29 @@ def api_delete_line(line_id: int):
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
+
+@docops_bp.get("/api/articles/search")
+def api_articles_search():
+    q = request.args.get("q", "").strip()
+    limit = request.args.get("limit", 10, type=int)
+    
+    if not q:
+        return jsonify([])
+
+    query = Articolo.query.filter(
+        or_(
+            Articolo.codice_interno.ilike(f"%{q}%"),
+            Articolo.descrizione.ilike(f"%{q}%"),
+            Articolo.codice_fornitore.ilike(f"%{q}%")
+        )
+    ).limit(limit).all()
+
+    results = [
+        {
+            "id": art.id,
+            "codice_interno": art.codice_interno,
+            "descrizione": art.descrizione,
+            "last_cost": float(art.last_cost or 0)
+        } for art in query
+    ]
+    return jsonify(results)
