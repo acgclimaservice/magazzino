@@ -64,7 +64,7 @@ class Documento(db.Model):
     data = db.Column(db.Date, nullable=True)      # Può essere nulla per le bozze
     data_creazione = db.Column(db.DateTime, nullable=False, server_default=func.now()) # Data creazione bozza
     riferimento_fornitore = db.Column(db.String(100)) # Es. "DDT 123 del 15/08/2025"
-    commessa_id = db.Column(db.String(50)) # COLONNA AGGIUNTA
+    commessa_id = db.Column(db.String(50)) 
     # --- FINE MODIFICHE ---
 
     status = db.Column(db.String(20), default='Bozza', nullable=False)
