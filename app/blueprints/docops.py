@@ -1,111 +1,204 @@
-from datetime import datetime
-from decimal import Decimal
-from sqlalchemy import UniqueConstraint, CheckConstraint, Index, func
-from .extensions import db
+from flask import Blueprint, jsonify, request
+from sqlalchemy import or_
+from decimal import Decimal as D
+from datetime import datetime, date
 
-# Modelli
+from ..extensions import db
+from ..models import Documento, RigaDocumento, Movimento, Articolo, Partner, Magazzino
+from ..utils import update_giacenza, get_giacenza, next_doc_number, required, q_dec, money_dec
 
-class Articolo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codice_interno = db.Column(db.String(50), unique=True, nullable=False)
-    codice_fornitore = db.Column(db.String(50))
-    codice_produttore = db.Column(db.String(50))
-    descrizione = db.Column(db.String(200), nullable=False)
-    fornitore = db.Column(db.String(100))
-    produttore = db.Column(db.String(100))
-    qta_scorta_minima = db.Column(db.Numeric(14, 3), default=0)
-    qta_riordino = db.Column(db.Numeric(14, 3), default=0)
-    barcode = db.Column(db.String(100))
-    last_cost = db.Column(db.Numeric(10, 2), default=0)
-    giacenze = db.relationship('Giacenza', backref='articolo', lazy=True, cascade="all, delete-orphan")
+docops_bp = Blueprint("docops", __name__)
 
-    __table_args__ = (
-        Index('ix_articolo_codice_fornitore', 'codice_fornitore'),
-    )
 
-class Magazzino(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codice = db.Column(db.String(20), unique=True, nullable=False)
-    nome = db.Column(db.String(100), nullable=False)
+def _safe_float(val, default=0.0):
+    try:
+        return float(val)
+    except Exception:
+        return float(default)
 
-class Giacenza(db.Model):
-    __table_args__ = (
-        UniqueConstraint('articolo_id', 'magazzino_id', name='uq_giacenza_art_mag'),
-        CheckConstraint('quantita >= 0', name='ck_giacenza_nonneg'),
-    )
-    id = db.Column(db.Integer, primary_key=True)
-    articolo_id = db.Column(db.Integer, db.ForeignKey('articolo.id'), nullable=False)
-    magazzino_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'), nullable=False)
-    quantita = db.Column(db.Numeric(14, 3), nullable=False, default=0)
-    magazzino = db.relationship('Magazzino')
 
-class Mastrino(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codice = db.Column(db.String(20), unique=True, nullable=False)
-    descrizione = db.Column(db.String(200), nullable=False)
-    tipo = db.Column(db.String(10), nullable=False)  # 'ACQUISTO' o 'RICAVO'
+def _row_to_front_dict(r: RigaDocumento):
+    codice_interno = None
+    codice_fornitore = None
+    if getattr(r, "articolo", None) is not None:
+        codice_interno = getattr(r.articolo, "codice_interno", None)
+        codice_fornitore = getattr(r.articolo, "codice_fornitore", None)
 
-class Partner(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(150), unique=True, nullable=False)
-    tipo = db.Column(db.String(20), nullable=False)  # 'Cliente' o 'Fornitore'
+    return {
+        "id": r.id,
+        "articolo_id": r.articolo_id,
+        "codice_interno": codice_interno,
+        "codice_fornitore": codice_fornitore,
+        "descrizione": getattr(r, "descrizione", "") or "",
+        "quantita": _safe_float(getattr(r, "quantita", 0)),
+        "prezzo": _safe_float(getattr(r, "prezzo", 0)),
+        "mastrino_codice": getattr(r, "mastrino_codice", None),
+    }
 
-class Documento(db.Model):
-    __table_args__ = (
-        UniqueConstraint('tipo', 'anno', 'numero', name='uq_documento_tipo_anno_numero'),
-        Index('ix_doc_anno_tipo_num', 'anno', 'tipo', 'numero'),
-    )
-    id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(20), nullable=False)
+
+@docops_bp.get("/api/documents/<int:id>/json")
+def api_document_json(id: int):
+    doc = Documento.query.get_or_404(id)
+
+    partner_name = doc.partner.nome if doc.partner else ""
+    magazzino_info = f"{doc.magazzino.codice} - {doc.magazzino.nome}" if doc.magazzino else ""
+
+    rows = doc.righe.order_by(RigaDocumento.id).all()
+    righe = [_row_to_front_dict(r) for r in rows]
+
+    doc_out = {
+        "id": doc.id,
+        "tipo": doc.tipo,
+        "numero": doc.numero,
+        "anno": getattr(doc, "anno", None),
+        "data": doc.data.isoformat() if getattr(doc, "data", None) else None,
+        "data_creazione": doc.data_creazione.isoformat() if getattr(doc, "data_creazione", None) else None,
+        "status": doc.status,
+        "partner_id": doc.partner_id,
+        "partner_nome": partner_name,
+        "magazzino_id": getattr(doc, "magazzino_id", None),
+        "magazzino_info": magazzino_info,
+        "note": getattr(doc, "note", None),
+        "righe": righe,
+    }
+
+    return jsonify({"ok": True, "doc": doc_out})
+
+
+@docops_bp.post("/api/documents/<int:id>/confirm")
+def api_confirm_document(id: int):
+    doc = Documento.query.get_or_404(id)
+    if doc.status != "Bozza":
+        return jsonify({"ok": True, "status": doc.status, "msg": "Documento già confermato."})
+
+    try:
+        rows = doc.righe.order_by(RigaDocumento.id).all()
+        if not rows:
+            return jsonify({"ok": False, "error": "Nessuna riga nel documento."}), 400
+
+        # Assegna numero e data al momento della conferma
+        today = datetime.utcnow().date()
+        doc.data = today
+        doc.anno = today.year
+        doc.numero = next_doc_number(doc.tipo, doc.anno)
+
+        # Aggiornamento giacenze e generazione movimenti
+        for r in rows:
+            q = D(str(getattr(r, "quantita", 0) or 0))
+            if q <= 0:
+                continue
+            
+            if doc.tipo == "DDT_IN":
+                update_giacenza(r.articolo_id, doc.magazzino_id, q)
+                mv = Movimento(
+                    data=doc.data,
+                    articolo_id=r.articolo_id,
+                    quantita=q,
+                    tipo="carico",
+                    magazzino_arrivo_id=doc.magazzino_id,
+                    documento_id=doc.id,
+                )
+            elif doc.tipo == "DDT_OUT":
+                if get_giacenza(r.articolo_id, doc.magazzino_id) < q:
+                    raise ValueError(f"Giacenza insufficiente per l'articolo {r.articolo.codice_interno if r.articolo else 'N/A'}.")
+                update_giacenza(r.articolo_id, doc.magazzino_id, -q)
+                mv = Movimento(
+                    data=doc.data,
+                    articolo_id=r.articolo_id,
+                    quantita=q, # La quantità nei movimenti è sempre positiva
+                    tipo="scarico",
+                    magazzino_partenza_id=doc.magazzino_id,
+                    documento_id=doc.id,
+                )
+            else:
+                raise ValueError("Tipo documento non gestito.")
+            db.session.add(mv)
+
+        doc.status = "Confermato"
+        db.session.commit()
+        return jsonify({"ok": True, "status": doc.status})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@docops_bp.post("/api/documents/<int:id>/delete-draft")
+def api_delete_draft(id: int):
+    doc = Documento.query.get_or_404(id)
+    if doc.status != "Bozza":
+        return jsonify({"ok": False, "error": "Solo le bozze possono essere eliminate."}), 400
+    try:
+        db.session.delete(doc)
+        db.session.commit()
+        return jsonify({"ok": True, "msg": "Bozza eliminata."})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@docops_bp.post("/api/documents/<int:id>/add-line")
+def api_add_line(id: int):
+    doc = Documento.query.get_or_404(id)
+    if doc.status != "Bozza":
+        return jsonify({"ok": False, "error": "Puoi aggiungere righe solo alle bozze."}), 400
     
-    # --- MODIFICHE APPLICATE QUI ---
-    numero = db.Column(db.Integer, nullable=True) # Può essere nullo per le bozze
-    anno = db.Column(db.Integer, nullable=True)   # Può essere nullo per le bozze
-    data = db.Column(db.Date, nullable=True)      # Può essere nulla per le bozze
-    data_creazione = db.Column(db.DateTime, nullable=False, server_default=func.now()) # Data creazione bozza
-    riferimento_fornitore = db.Column(db.String(100)) # Es. "DDT 123 del 15/08/2025"
-    commessa_id = db.Column(db.String(50)) 
-    # --- FINE MODIFICHE ---
+    data = request.get_json()
+    try:
+        art = Articolo.query.get(int(data['articolo_id']))
+        if not art:
+            return jsonify({"ok": False, "error": "Articolo non trovato."}), 404
 
-    status = db.Column(db.String(20), default='Bozza', nullable=False)
-    partner_id = db.Column(db.Integer, db.ForeignKey('partner.id'), nullable=False)
-    magazzino_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'), nullable=False)
+        new_line = RigaDocumento(
+            documento_id=doc.id,
+            articolo_id=art.id,
+            descrizione=art.descrizione,
+            quantita=q_dec(data.get('quantita', '1')),
+            prezzo=money_dec(data.get('prezzo', '0')),
+            mastrino_codice=data.get('mastrino_codice')
+        )
+        db.session.add(new_line)
+        db.session.commit()
+        return jsonify({"ok": True, "line": _row_to_front_dict(new_line)})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@docops_bp.post("/api/documents/lines/<int:line_id>/delete")
+def api_delete_line(line_id: int):
+    line = RigaDocumento.query.get_or_404(line_id)
+    if line.documento.status != "Bozza":
+        return jsonify({"ok": False, "error": "Puoi eliminare righe solo dalle bozze."}), 400
+    try:
+        db.session.delete(line)
+        db.session.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@docops_bp.get("/api/articles/search")
+def api_articles_search():
+    q = request.args.get("q", "").strip()
+    limit = request.args.get("limit", 10, type=int)
     
-    partner = db.relationship('Partner')
-    magazzino = db.relationship('Magazzino')
-    righe = db.relationship('RigaDocumento', backref='documento', lazy='dynamic', cascade="all, delete-orphan")
-    allegati = db.relationship('Allegato', backref='documento', lazy=True, cascade="all, delete-orphan")
-    movimenti = db.relationship('Movimento', backref='documento', lazy=True)
+    if not q:
+        return jsonify([])
 
-class RigaDocumento(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'), nullable=False)
-    articolo_id = db.Column(db.Integer, db.ForeignKey('articolo.id'), nullable=False)
-    descrizione = db.Column(db.String(200))
-    quantita = db.Column(db.Numeric(14, 3), nullable=False)
-    prezzo = db.Column(db.Numeric(10, 2), nullable=False, default=0)
-    mastrino_codice = db.Column(db.String(20))
-    articolo = db.relationship('Articolo')
+    query = Articolo.query.filter(
+        or_(
+            Articolo.codice_interno.ilike(f"%{q}%"),
+            Articolo.descrizione.ilike(f"%{q}%"),
+            Articolo.codice_fornitore.ilike(f"%{q}%")
+        )
+    ).limit(limit).all()
 
-class Movimento(db.Model):
-    __table_args__ = (Index('ix_movimento_data', 'data'),)
-    id = db.Column(db.Integer, primary_key=True)
-    data = db.Column(db.DateTime, default=datetime.now)
-    articolo_id = db.Column(db.Integer, db.ForeignKey('articolo.id'), nullable=False)
-    quantita = db.Column(db.Numeric(14, 3), nullable=False)
-    tipo = db.Column(db.String(20), nullable=False)
-    magazzino_partenza_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'))
-    magazzino_arrivo_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'))
-    documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'))
-    articolo = db.relationship('Articolo')
-    magazzino_partenza = db.relationship('Magazzino', foreign_keys=[magazzino_partenza_id])
-    magazzino_arrivo = db.relationship('Magazzino', foreign_keys=[magazzino_arrivo_id])
-
-class Allegato(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'), nullable=False)
-    filename = db.Column(db.String(255), nullable=False)
-    mime = db.Column(db.String(100))
-    path = db.Column(db.String(400), nullable=False)
-    size = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    results = [
+        {
+            "id": art.id,
+            "codice_interno": art.codice_interno,
+            "descrizione": art.descrizione,
+            "last_cost": float(art.last_cost or 0)
+        } for art in query
+    ]
+    return jsonify(results)
