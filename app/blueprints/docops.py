@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, url_for
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 from decimal import Decimal as D
 from datetime import datetime, date
 
@@ -20,58 +21,80 @@ def _safe_float(val, default=0.0):
 def _row_to_front_dict(r: RigaDocumento):
     codice_interno = None
     codice_fornitore = None
-    if getattr(r, "articolo", None) is not None:
-        codice_interno = getattr(r.articolo, "codice_interno", None)
-        codice_fornitore = getattr(r.articolo, "codice_fornitore", None)
+    # Modo più sicuro di accedere alla relazione
+    try:
+        if r.articolo:
+            codice_interno = r.articolo.codice_interno
+            codice_fornitore = r.articolo.codice_fornitore
+    except AttributeError:
+        pass  # Le relazioni potrebbero non essere caricate o l'articolo essere nullo
 
     return {
         "id": r.id,
         "articolo_id": r.articolo_id,
         "codice_interno": codice_interno,
         "codice_fornitore": codice_fornitore,
-        "descrizione": getattr(r, "descrizione", "") or "",
-        "quantita": _safe_float(getattr(r, "quantita", 0)),
-        "prezzo": _safe_float(getattr(r, "prezzo", 0)),
-        "mastrino_codice": getattr(r, "mastrino_codice", None),
+        "descrizione": r.descrizione or "",
+        "quantita": _safe_float(r.quantita, 0),
+        "prezzo": _safe_float(r.prezzo, 0),
+        "mastrino_codice": r.mastrino_codice,
     }
 
 
 @docops_bp.get("/api/documents/<int:id>/json")
 def api_document_json(id: int):
-    doc = Documento.query.get_or_404(id)
+    try:
+        # Carica il documento con tutte le relazioni necessarie per evitare errori
+        doc = Documento.query.options(
+            joinedload(Documento.partner),
+            joinedload(Documento.magazzino),
+            joinedload(Documento.righe).joinedload(RigaDocumento.articolo),
+            joinedload(Documento.allegati)
+        ).get_or_404(id)
 
-    partner_name = doc.partner.nome if doc.partner else ""
-    magazzino_info = f"{doc.magazzino.codice} - {doc.magazzino.nome}" if doc.magazzino else ""
+        # Accesso sicuro alle relazioni
+        partner_name = ""
+        if doc.partner:
+            partner_name = doc.partner.nome or ""
 
-    rows = doc.righe.order_by(RigaDocumento.id).all()
-    righe = [_row_to_front_dict(r) for r in rows]
+        magazzino_info = ""
+        if doc.magazzino:
+            magazzino_info = f"{doc.magazzino.codice or ''} - {doc.magazzino.nome or ''}"
 
-    allegati = []
-    for a in doc.allegati:
-        allegati.append({
-            "id": a.id,
-            "filename": a.filename,
-            "url": url_for('files.download_attachment', id=a.id) # FIX: Corretto il nome dell'endpoint
-        })
+        rows = doc.righe or []
+        righe = [_row_to_front_dict(r) for r in rows]
 
-    doc_out = {
-        "id": doc.id,
-        "tipo": doc.tipo,
-        "numero": doc.numero,
-        "anno": getattr(doc, "anno", None),
-        "data": doc.data.isoformat() if getattr(doc, "data", None) else None,
-        "data_creazione": doc.data_creazione.isoformat() if getattr(doc, "data_creazione", None) else None,
-        "status": doc.status,
-        "partner_id": doc.partner_id,
-        "partner_nome": partner_name,
-        "magazzino_id": getattr(doc, "magazzino_id", None),
-        "magazzino_info": magazzino_info,
-        "note": getattr(doc, "note", None),
-        "righe": righe,
-        "allegati": allegati
-    }
+        allegati = []
+        if hasattr(doc, 'allegati') and doc.allegati:
+            for a in doc.allegati:
+                allegati.append({
+                    "id": a.id,
+                    "filename": a.filename,
+                    "url": url_for('files.download_attachment', id=a.id)
+                })
 
-    return jsonify({"ok": True, "doc": doc_out})
+        doc_out = {
+            "id": doc.id,
+            "tipo": doc.tipo,
+            "numero": doc.numero,
+            "anno": getattr(doc, "anno", None),
+            "data": doc.data.isoformat() if doc.data else None,
+            "data_creazione": doc.data_creazione.isoformat() if doc.data_creazione else None,
+            "status": doc.status,
+            "partner_id": doc.partner_id,
+            "partner_nome": partner_name,
+            "magazzino_id": getattr(doc, "magazzino_id", None),
+            "magazzino_info": magazzino_info,
+            "note": getattr(doc, "note", None),
+            "righe": righe,
+            "allegati": allegati
+        }
+        return jsonify({"ok": True, "doc": doc_out})
+
+    except Exception as e:
+        # Log dell'errore per un debug più facile
+        print(f"Errore in api_document_json: {str(e)}")
+        return jsonify({"ok": False, "error": "Errore interno del server durante il recupero dei dati del documento."}), 500
 
 
 @docops_bp.post("/api/documents/<int:id>/confirm")
