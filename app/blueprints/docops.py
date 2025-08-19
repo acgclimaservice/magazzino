@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, url_for
 from sqlalchemy import or_
 from decimal import Decimal as D
 from datetime import datetime, date
@@ -46,6 +46,14 @@ def api_document_json(id: int):
     rows = doc.righe.order_by(RigaDocumento.id).all()
     righe = [_row_to_front_dict(r) for r in rows]
 
+    allegati = []
+    for a in doc.allegati:
+        allegati.append({
+            "id": a.id,
+            "filename": a.filename,
+            "url": url_for('files.download_file', id=a.id)
+        })
+
     doc_out = {
         "id": doc.id,
         "tipo": doc.tipo,
@@ -60,6 +68,7 @@ def api_document_json(id: int):
         "magazzino_info": magazzino_info,
         "note": getattr(doc, "note", None),
         "righe": righe,
+        "allegati": allegati
     }
 
     return jsonify({"ok": True, "doc": doc_out})
