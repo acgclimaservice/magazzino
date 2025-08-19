@@ -1,3 +1,6 @@
+# In app/blueprints/movements.py
+# Sostituisci tutto il contenuto con questo:
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from ..extensions import db
 from ..models import Articolo, Movimento, Magazzino, Documento, Partner
@@ -53,17 +56,42 @@ def movements():
     movimenti = Movimento.query.order_by(Movimento.data.desc()).paginate(page=page, per_page=50, error_out=False)
     magazzini = Magazzino.query.all()
 
-    # Etichetta "Da": se carico da DDT_IN, mostra il fornitore
+    # 🔥 CORREZIONE: Etichetta "Da" migliorata per DDT IN e DDT OUT
     labels_da = {}
+    labels_a = {}
+    
     try:
         for m in movimenti.items:
-            label = m.magazzino_partenza.codice if m.magazzino_partenza else ''
-            if not label and m.tipo == 'carico' and getattr(m, 'documento_id', None):
+            # Colonna "Da" (partenza)
+            label_da = ''
+            if m.magazzino_partenza:
+                label_da = m.magazzino_partenza.codice
+            elif m.tipo == 'carico' and getattr(m, 'documento_id', None):
+                # Per carichi da DDT_IN, mostra il fornitore
                 doc = Documento.query.get(m.documento_id)
                 if doc and doc.tipo == 'DDT_IN' and doc.partner:
-                    label = doc.partner.nome
-            labels_da[m.id] = label
-    except Exception:
+                    label_da = f"🏪 {doc.partner.nome}"
+            
+            # 🔥 CORREZIONE: Colonna "A" (arrivo)
+            label_a = ''
+            if m.magazzino_arrivo:
+                label_a = m.magazzino_arrivo.codice
+            elif m.tipo == 'scarico' and getattr(m, 'documento_id', None):
+                # Per scarichi da DDT_OUT, mostra il cliente
+                doc = Documento.query.get(m.documento_id)
+                if doc and doc.tipo == 'DDT_OUT' and doc.partner:
+                    label_a = f"👤 {doc.partner.nome}"
+            
+            labels_da[m.id] = label_da
+            labels_a[m.id] = label_a
+            
+    except Exception as e:
+        # Fallback in caso di errore
         labels_da = {m.id: (m.magazzino_partenza.codice if m.magazzino_partenza else '') for m in movimenti.items}
+        labels_a = {m.id: (m.magazzino_arrivo.codice if m.magazzino_arrivo else '') for m in movimenti.items}
 
-    return render_template('movements.html', movimenti=movimenti, magazzini=magazzini, labels_da=labels_da)
+    return render_template('movements.html', 
+                         movimenti=movimenti, 
+                         magazzini=magazzini, 
+                         labels_da=labels_da,
+                         labels_a=labels_a)
