@@ -1,111 +1,119 @@
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+from sqlalchemy import desc, or_
 from datetime import datetime
-from decimal import Decimal
-from sqlalchemy import UniqueConstraint, CheckConstraint, Index, func
-from .extensions import db
 
-# Modelli
+from ..extensions import db
+from ..models import Documento, Partner, Magazzino
 
-class Articolo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codice_interno = db.Column(db.String(50), unique=True, nullable=False)
-    codice_fornitore = db.Column(db.String(50))
-    codice_produttore = db.Column(db.String(50))
-    descrizione = db.Column(db.String(200), nullable=False)
-    fornitore = db.Column(db.String(100))
-    produttore = db.Column(db.String(100))
-    qta_scorta_minima = db.Column(db.Numeric(14, 3), default=0)
-    qta_riordino = db.Column(db.Numeric(14, 3), default=0)
-    barcode = db.Column(db.String(100))
-    last_cost = db.Column(db.Numeric(10, 2), default=0)
-    giacenze = db.relationship('Giacenza', backref='articolo', lazy=True, cascade="all, delete-orphan")
+documents_bp = Blueprint("documents", __name__)
 
-    __table_args__ = (
-        Index('ix_articolo_codice_fornitore', 'codice_fornitore'),
-    )
+DOCUMENTS_PER_PAGE = 25
 
-class Magazzino(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codice = db.Column(db.String(20), unique=True, nullable=False)
-    nome = db.Column(db.String(100), nullable=False)
+def _parse_date_any(s):
+    if not s:
+        return None
+    s = str(s).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
 
-class Giacenza(db.Model):
-    __table_args__ = (
-        UniqueConstraint('articolo_id', 'magazzino_id', name='uq_giacenza_art_mag'),
-        CheckConstraint('quantita >= 0', name='ck_giacenza_nonneg'),
-    )
-    id = db.Column(db.Integer, primary_key=True)
-    articolo_id = db.Column(db.Integer, db.ForeignKey('articolo.id'), nullable=False)
-    magazzino_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'), nullable=False)
-    quantita = db.Column(db.Numeric(14, 3), nullable=False, default=0)
-    magazzino = db.relationship('Magazzino')
+def _apply_filters(base_query, *, q_text=None, d_from=None, d_to=None, status=None):
+    q = base_query
+    if q_text:
+        like = f"%{q_text.strip()}%"
+        # Assumiamo che il modello Documento abbia una relazione 'partner'
+        q = q.join(Documento.partner).filter(Partner.nome.ilike(like))
 
-class Mastrino(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codice = db.Column(db.String(20), unique=True, nullable=False)
-    descrizione = db.Column(db.String(200), nullable=False)
-    tipo = db.Column(db.String(10), nullable=False)  # 'ACQUISTO' o 'RICAVO'
+    if d_from:
+        q = q.filter(Documento.data >= d_from)
+    if d_to:
+        q = q.filter(Documento.data <= d_to)
+    if status and status in ("Bozza","Confermato","Stornato","Annullato"):
+        q = q.filter(Documento.status == status)
+    return q.order_by(desc(Documento.anno), desc(Documento.numero), desc(Documento.id))
 
-class Partner(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(150), unique=True, nullable=False)
-    tipo = db.Column(db.String(20), nullable=False)  # 'Cliente' o 'Fornitore'
+@documents_bp.get("/documents")
+def documents_list():
+    return redirect(url_for("documents.documents_in"))
 
-class Documento(db.Model):
-    __table_args__ = (
-        UniqueConstraint('tipo', 'anno', 'numero', name='uq_documento_tipo_anno_numero'),
-        Index('ix_doc_anno_tipo_num', 'anno', 'tipo', 'numero'),
-    )
-    id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(20), nullable=False)
-    
-    # --- MODIFICHE APPLICATE QUI ---
-    numero = db.Column(db.Integer, nullable=True) # Può essere nullo per le bozze
-    anno = db.Column(db.Integer, nullable=True)   # Può essere nullo per le bozze
-    data = db.Column(db.Date, nullable=True)      # Può essere nulla per le bozze
-    data_creazione = db.Column(db.DateTime, nullable=False, server_default=func.now()) # Data creazione bozza
-    riferimento_fornitore = db.Column(db.String(100)) # Es. "DDT 123 del 15/08/2025"
-    commessa_id = db.Column(db.String(50)) # COLONNA AGGIUNTA
-    # --- FINE MODIFICHE ---
+@documents_bp.get("/documents/in")
+def documents_in():
+    q_text = request.args.get("q", type=str)
+    d_from = _parse_date_any(request.args.get("from_date"))
+    d_to   = _parse_date_any(request.args.get("to_date"))
+    status = request.args.get("status", type=str)
+    page   = request.args.get("page", 1, type=int)
+    per    = request.args.get("per_page", DOCUMENTS_PER_PAGE, type=int)
 
-    status = db.Column(db.String(20), default='Bozza', nullable=False)
-    partner_id = db.Column(db.Integer, db.ForeignKey('partner.id'), nullable=False)
-    magazzino_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'), nullable=False)
-    
-    partner = db.relationship('Partner')
-    magazzino = db.relationship('Magazzino')
-    righe = db.relationship('RigaDocumento', backref='documento', lazy='dynamic', cascade="all, delete-orphan")
-    allegati = db.relationship('Allegato', backref='documento', lazy=True, cascade="all, delete-orphan")
-    movimenti = db.relationship('Movimento', backref='documento', lazy=True)
+    q = Documento.query.filter(Documento.tipo == "DDT_IN")
+    q = _apply_filters(q, q_text=q_text, d_from=d_from, d_to=d_to, status=status)
+    pager = q.paginate(page=page, per_page=per, error_out=False)
 
-class RigaDocumento(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'), nullable=False)
-    articolo_id = db.Column(db.Integer, db.ForeignKey('articolo.id'), nullable=False)
-    descrizione = db.Column(db.String(200))
-    quantita = db.Column(db.Numeric(14, 3), nullable=False)
-    prezzo = db.Column(db.Numeric(10, 2), nullable=False, default=0)
-    mastrino_codice = db.Column(db.String(20))
-    articolo = db.relationship('Articolo')
+    return render_template("documents_in.html", pager=pager, docs=pager.items, status=status)
 
-class Movimento(db.Model):
-    __table_args__ = (Index('ix_movimento_data', 'data'),)
-    id = db.Column(db.Integer, primary_key=True)
-    data = db.Column(db.DateTime, default=datetime.now)
-    articolo_id = db.Column(db.Integer, db.ForeignKey('articolo.id'), nullable=False)
-    quantita = db.Column(db.Numeric(14, 3), nullable=False)
-    tipo = db.Column(db.String(20), nullable=False)
-    magazzino_partenza_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'))
-    magazzino_arrivo_id = db.Column(db.Integer, db.ForeignKey('magazzino.id'))
-    documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'))
-    articolo = db.relationship('Articolo')
-    magazzino_partenza = db.relationship('Magazzino', foreign_keys=[magazzino_partenza_id])
-    magazzino_arrivo = db.relationship('Magazzino', foreign_keys=[magazzino_arrivo_id])
+@documents_bp.get("/documents/out")
+def documents_out():
+    q_text = request.args.get("q", type=str)
+    d_from = _parse_date_any(request.args.get("from_date"))
+    d_to   = _parse_date_any(request.args.get("to_date"))
+    status = request.args.get("status", type=str)
+    page   = request.args.get("page", 1, type=int)
+    per    = request.args.get("per_page", DOCUMENTS_PER_PAGE, type=int)
 
-class Allegato(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    documento_id = db.Column(db.Integer, db.ForeignKey('documento.id'), nullable=False)
-    filename = db.Column(db.String(255), nullable=False)
-    mime = db.Column(db.String(100))
-    path = db.Column(db.String(400), nullable=False)
-    size = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    q = Documento.query.filter(Documento.tipo == "DDT_OUT")
+    q = _apply_filters(q, q_text=q_text, d_from=d_from, d_to=d_to, status=status)
+    pager = q.paginate(page=page, per_page=per, error_out=False)
+
+    return render_template("documents_out.html", pager=pager, docs=pager.items, status=status)
+
+@documents_bp.get("/documents/<int:id>")
+def document_detail(id: int):
+    # Usa il template v2 che contiene la logica JS
+    doc = Documento.query.get_or_404(id)
+    return render_template("document_detail_v2.html", doc=doc)
+
+# --- Creazione Manuale DDT IN ---
+@documents_bp.get("/documents/new-in")
+def new_in_form():
+    """Mostra il form per creare l'intestazione di un nuovo DDT IN manuale."""
+    magazzini = Magazzino.query.order_by(Magazzino.codice).all()
+    fornitori = Partner.query.filter_by(tipo='Fornitore').order_by(Partner.nome).all()
+    clienti = Partner.query.filter_by(tipo='Cliente').order_by(Partner.nome).all()
+    return render_template("document_new_in.html", magazzini=magazzini, fornitori=fornitori, clienti=clienti, today=datetime.today().date())
+
+@documents_bp.post("/documents/new-in")
+def new_in_save():
+    """Salva l'intestazione di un nuovo DDT IN e reindirizza alla modifica."""
+    try:
+        fornitore_nome = request.form.get("fornitore")
+        mag_id = int(request.form.get("magazzino_id"))
+        commessa_id = request.form.get("commessa_id")
+
+        if not fornitore_nome or not mag_id:
+            raise ValueError("Fornitore e magazzino sono obbligatori.")
+
+        partner = Partner.query.filter_by(nome=fornitore_nome).first()
+        if not partner:
+            partner = Partner(nome=fornitore_nome, tipo='Fornitore')
+            db.session.add(partner)
+            db.session.flush()
+
+        doc = Documento(
+            tipo='DDT_IN',
+            status='Bozza',
+            partner_id=partner.id,
+            magazzino_id=mag_id,
+            commessa_id=(int(commessa_id) if commessa_id else None)
+        )
+        db.session.add(doc)
+        db.session.commit()
+        
+        flash("Bozza DDT creata. Ora puoi aggiungere le righe.", "success")
+        return redirect(url_for('documents.document_detail', id=doc.id))
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Errore creazione bozza: {e}", "error")
+        return redirect(url_for('documents.new_in_form'))
