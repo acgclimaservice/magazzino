@@ -31,25 +31,21 @@
 
 <div class="bg-white p-6 rounded-xl shadow space-y-6">
   <div class="flex items-center justify-between">
-    <h1 class="text-xl font-semibold">Nuovo DDT in uscita</h1>
+    <h1 class="text-xl font-semibold">Nuovo DDT in uscita (Bozza)</h1>
     <div class="flex gap-2">
       <a href="{{ url_for('core.menu') }}" class="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm border">Torna al menu</a>
-      <button id="btn-save" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Conferma e crea</button>
+      <button id="btn-save" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Crea Bozza</button>
     </div>
   </div>
 
   <!-- Meta -->
-  <div class="grid md:grid-cols-4 gap-4 text-sm">
-    <div>
-      <label class="block text-gray-600 mb-1">Data DDT</label>
-      <input id="fld-data" type="date" class="border rounded-md p-2 w-full">
-    </div>
-    <div class="md:col-span-2">
+  <div class="grid md:grid-cols-2 gap-4 text-sm">
+    <div class="md:col-span-1">
       <label class="block text-gray-600 mb-1">Cliente</label>
       <input id="fld-cliente" type="text" placeholder="Ragione sociale cliente" class="border rounded-md p-2 w-full">
     </div>
     <div>
-      <label class="block text-gray-600 mb-1">Magazzino</label>
+      <label class="block text-gray-600 mb-1">Magazzino di Origine</label>
       <select id="sel-magazzino" class="border rounded-md p-2 w-full"></select>
     </div>
   </div>
@@ -160,7 +156,6 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   try {
     showLoading('Creazione documento…');
     const payload = {
-      data: document.getElementById('fld-data').value,
       cliente: document.getElementById('fld-cliente').value,
       magazzino_id: document.getElementById('sel-magazzino').value || null,
       righe: collectRows()
@@ -168,9 +163,9 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     const res = await postJSON('/api/ddt-out/create', payload);
     if (res.redirect_url) window.location.href = res.redirect_url;
     else if (res.document_id) window.location.href = '/documents/' + res.document_id;
-    else showError('Creato ma senza URL di redirect.');
+    else alert('Creato ma senza URL di redirect.');
   } catch (err) {
-    showError(err, 'POST /api/ddt-out/create');
+    alert('Errore: ' + err.message);
   } finally {
     hideLoading();
   }
@@ -212,22 +207,6 @@ window.hideLoading = window.hideLoading || function(){
   const btn = document.getElementById('btn-confirm') || document.querySelector('[data-role="btn-confirm"]');
   if (btn){ btn.textContent = btn.dataset._oldtxt || 'Conferma'; btn.disabled = false; }
 };
-
-// Wrappa fetch JSON con estrazione chiara dell'errore
-async function postJSON(url, payload){
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  const text = await r.text();
-  let data = null;
-  try { data = JSON.parse(text); } catch { /* lascia text grezzo */ }
-  if (!r.ok){
-    let msg = (data && (data.error || data.message)) || ('HTTP ' + r.status);
-    if (data && Array.isArray(data.errors) && data.errors.length) msg += ' — ' + data.errors.join(' ; ');
-    throw new Error(msg);
-  }
-  return data !== null ? data : text;
-}
-
-
 
 // --- Autocomplete Descrizione con giacenze ---
 function positionDropdown(container){
@@ -300,13 +279,11 @@ function wireDescAutocomplete(tr){
 
 (async () => {
   try {
-    showLoading('Lookup…');
+    showLoading('Caricamento dati…');
     await loadLookups();
-    const today = new Date().toISOString().slice(0,10);
-    document.getElementById('fld-data').value = today;
     addRow();
   } catch(err){
-    showError(err, 'bootstrap loadLookups');
+    alert('Errore: ' + err.message);
   } finally {
     hideLoading();
   }
