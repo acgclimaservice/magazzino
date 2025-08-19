@@ -27,7 +27,7 @@
     <input type="file" name="pdf_file" accept="application/pdf" class="border rounded-md p-2 w-full" required>
     <div class="flex gap-2">
       <button class="px-3 py-2 bg-indigo-600 text-white rounded-md" type="submit">Estrai dati</button>
-      <button id="btn-ddt-confirm" class="px-3 py-2 bg-emerald-600 text-white rounded-md" type="button" disabled>Conferma e salva in DB</button>
+      <button id="btn-ddt-confirm" class="px-3 py-2 bg-emerald-600 text-white rounded-md" type="button" disabled>Crea Bozza DDT</button>
     </div>
   </form>
 
@@ -35,17 +35,13 @@
   <div id="ddt-note" class="hidden text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2"></div>
 
   <!-- STEP 2: Editable Meta -->
-  <div id="meta-box" class="hidden grid md:grid-cols-4 gap-4 text-sm">
-    <div>
-      <label class="block text-gray-600 mb-1">Data DDT</label>
-      <input id="fld-data" type="date" class="border rounded-md p-2 w-full">
-    </div>
+  <div id="meta-box" class="hidden grid md:grid-cols-3 gap-4 text-sm">
     <div class="md:col-span-2">
       <label class="block text-gray-600 mb-1">Fornitore</label>
       <input id="fld-fornitore" type="text" class="border rounded-md p-2 w-full">
     </div>
     <div>
-      <label class="block text-gray-600 mb-1">Magazzino</label>
+      <label class="block text-gray-600 mb-1">Magazzino di Destinazione</label>
       <select id="sel-magazzino" class="border rounded-md p-2 w-full"></select>
     </div>
     <div>
@@ -98,13 +94,11 @@ function showLoading(msg){
   const o = document.getElementById('loading-overlay');
   o.querySelector('.msg').textContent = msg || 'Elaborazione…';
   o.classList.remove('hidden');
-  // disabilita pulsanti
   document.querySelectorAll('button, input, select').forEach(el => el.disabled = true);
 }
 function hideLoading(){
   const o = document.getElementById('loading-overlay');
   o.classList.add('hidden');
-  // riabilita pulsanti (il browser mantiene disabled sui file input durante upload, ma qui è post-upload)
   document.querySelectorAll('button, input, select').forEach(el => el.disabled = false);
 }
 
@@ -215,7 +209,6 @@ document.getElementById('form-ddt').addEventListener('submit', async (e) => {
     if (!resp.ok || parsed.ok === false) throw new Error(parsed.error || ('HTTP ' + resp.status));
     parsedDDT = parsed;
 
-    // Metodo / fallback info
     const noteBox = document.getElementById('ddt-note');
     noteBox.classList.add('hidden'); noteBox.textContent = '';
     if (parsed.method) {
@@ -223,7 +216,6 @@ document.getElementById('form-ddt').addEventListener('submit', async (e) => {
       noteBox.classList.remove('hidden');
     }
 
-    // Normalizza previewState e carica lookups in parallelo
     const [prev] = await Promise.all([
       postJSON('/api/import-ddt-preview', { data: parsed.data, uploaded_file: parsed.uploaded_file }),
       loadMagazzini(),
@@ -232,14 +224,9 @@ document.getElementById('form-ddt').addEventListener('submit', async (e) => {
     ]);
     previewState = prev.preview;
 
-    // Popola meta
-    document.getElementById('fld-data').value = (previewState.data || '').slice(0,10);
     document.getElementById('fld-fornitore').value = previewState.fornitore || '';
-
-    // Render righe con mastrino per riga
     renderRows(previewState.righe || []);
 
-    // Mostra editor
     document.getElementById('meta-box').classList.remove('hidden');
     document.getElementById('rows-box').classList.remove('hidden');
     document.getElementById('btn-ddt-confirm').disabled = false;
@@ -254,9 +241,7 @@ document.getElementById('btn-ddt-confirm').addEventListener('click', async () =>
   if (!previewState) { alert('Prima estrai i dati.'); return; }
   try {
     showLoading('Sto salvando il documento…');
-    // Leggi meta aggiornati
     const payload = {
-      data: document.getElementById('fld-data').value,
       fornitore: document.getElementById('fld-fornitore').value,
       righe: readRowsFromDOM(),
       uploaded_file: previewState.uploaded_file,
