@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, url_for, current_app
 from sqlalchemy.exc import IntegrityError
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from ..extensions import db
 from ..models import Articolo, Magazzino, Partner, Documento, RigaDocumento, Movimento, Mastrino, Allegato
 from ..utils import parse_it_date, q_dec, money_dec, next_doc_number, unify_um, supplier_prefix, gen_internal_code
@@ -128,7 +128,7 @@ def import_ddt_preview():
             return jsonify({"ok": False, "error": "Nessun dato ricevuto"}), 400
         d = payload.get("data") or {}
         righe = d.get("righe") or d.get("articoli") or []
-        # DUOTERMICA: forza mappatura QUANT./NETTO CAD. usando il PDF caricato
+        
         vendor = ((d.get("fornitore") or "") or "").upper()
         if "DUOTERMICA" in vendor:
             rel = (payload.get("uploaded_file") or "").lstrip("/\\")
@@ -164,31 +164,12 @@ def import_ddt_preview():
 def import_ddt_confirm():
     try:
         payload = request.get_json(force=True)
-        data_str = payload.get("data")
         fornitore_nome = payload.get("fornitore")
         righe = payload.get("righe") or []
         rel_upload = payload.get("uploaded_file")
-        # DUOTERMICA: ricalcolo righe dal PDF per mappare QUANT./NETTO CAD.
-        if (fornitore_nome or "").upper().find("DUOTERMICA") >= 0 and rel_upload:
-            try:
-                import os
-                abs_path = os.path.join(current_app.root_path, rel_upload.lstrip("/\\"))
-                raw = extract_text_from_pdf(abs_path)
-                vparsed = parse_ddt_duotermica(raw) or {}
-                vrows = vparsed.get("righe") or []
-                if vrows:
-                    righe = vrows
-            except Exception as e:
-                current_app.logger.warning(f"DUOTERMICA confirm override fallito: {e}")
         
-        mag_id = payload.get("magazzino_id")
-        mastrino_default = (payload.get("mastrino_codice") or "").strip()  # opzionale, usato come fallback
-        if not data_str or not fornitore_nome or not righe:
-            return jsonify({"ok": False, "error": "Dati insufficienti (data, fornitore, righe)"}), 400
-
-        from decimal import Decimal as D
-        doc_date = parse_it_date(data_str)
-        anno = doc_date.year
+        if not fornitore_nome or not righe:
+            return jsonify({"ok": False, "error": "Dati insufficienti (fornitore, righe)"}), 400
 
         # Partner
         partner = Partner.query.filter_by(nome=fornitore_nome).first()
@@ -200,17 +181,12 @@ def import_ddt_confirm():
             partner.tipo = 'Fornitore'
 
         # Magazzino
+        mag_id = payload.get("magazzino_id")
         mag = Magazzino.query.get(int(mag_id)) if mag_id else Magazzino.query.order_by(Magazzino.id).first()
         if not mag:
             return jsonify({"ok": False, "error": "Nessun magazzino configurato"}), 400
 
-        # Default mastrino
-        if mastrino_default:
-            m = Mastrino.query.filter_by(codice=mastrino_default).first()
-            if not m:
-                mastrino_default = _default_acquisto_mastrino()
-        else:
-            mastrino_default = _default_acquisto_mastrino()
+        mastrino_default = _default_acquisto_mastrino()
 
         # Documento
         commessa_id = payload.get('commessa_id')
@@ -218,17 +194,16 @@ def import_ddt_confirm():
             commessa_id = int(commessa_id) if commessa_id not in (None, '', 'null') else None
         except Exception:
             commessa_id = None
-        doc = Documento(tipo='DDT_IN', anno=anno, data=doc_date, partner_id=partner.id, magazzino_id=mag.id, commessa_id=commessa_id, status='Bozza')
-        for _ in range(3):
-            doc.numero = next_doc_number('DDT_IN', anno)
-            try:
-                db.session.add(doc)
-                db.session.flush()
-                break
-            except IntegrityError:
-                db.session.rollback()
-        else:
-            return jsonify({"ok": False, "error": "Assegnazione numero documento fallita"}), 500
+            
+        doc = Documento(
+            tipo='DDT_IN', 
+            partner_id=partner.id, 
+            magazzino_id=mag.id, 
+            commessa_id=commessa_id, 
+            status='Bozza'
+        )
+        db.session.add(doc)
+        db.session.flush()
 
         # Righe
         pref = supplier_prefix(fornitore_nome)
@@ -242,20 +217,13 @@ def import_ddt_confirm():
             if qty_raw in (None, ''):
                 raise ValueError(f"Quantità mancante per riga con codice fornitore '{sup_code or 'N/A'}'")
 
-            # mastrino per riga
-            mastrino_row = (r.get('mastrino_codice') or '').strip()
-            if mastrino_row:
-                m = Mastrino.query.filter_by(codice=mastrino_row).first()
-                if not m:
-                    mastrino_row = mastrino_default
-            else:
-                mastrino_row = mastrino_default
+            mastrino_row = (r.get('mastrino_codice') or '').strip() or mastrino_default
 
             art = None
             if sup_code:
                 art = Articolo.query.filter_by(codice_fornitore=sup_code, fornitore=fornitore_nome).first()
-                if not art:
-                    art = Articolo.query.filter_by(codice_interno=sup_code).first()  # legacy
+            if not art:
+                art = Articolo.query.filter_by(codice_interno=sup_code).first()
 
             if art is None:
                 internal = gen_internal_code(pref, supplier_code=sup_code or None)
@@ -285,36 +253,19 @@ def import_ddt_confirm():
             )
             db.session.add(riga)
 
-        # Allegato PDF originale (se disponibile)
         if rel_upload:
             try:
                 new_rel, new_abs = move_upload_to_document(rel_upload, doc.id)
-                # Rinomina con prefisso IMPORTATO_ per tracciamento univoco (best effort)
-                try:
-                    import os
-                    dir_abs = os.path.dirname(new_abs)
-                    base = os.path.basename(new_abs)
-                    if not base.upper().startswith("IMPORTATO_"):
-                        new_base = f"IMPORTATO_{base}"
-                        pref_abs = os.path.join(dir_abs, new_base)
-                        os.rename(new_abs, pref_abs)
-                        new_abs = pref_abs
-                        rel_dir = os.path.dirname(new_rel).replace('\\', '/')
-                        new_rel = f"{rel_dir}/{new_base}".lstrip('/')
-                except Exception:
-                    pass
-                size = os.path.getsize(new_abs) if os.path.exists(new_abs) else 0
                 allegato = Allegato(
                     documento_id=doc.id,
                     filename=os.path.basename(new_abs),
                     mime='application/pdf',
                     path=new_rel,
-                    size=size
+                    size=os.path.getsize(new_abs) if os.path.exists(new_abs) else 0
                 )
                 db.session.add(allegato)
             except Exception:
                 pass
-
 
         db.session.commit()
         return jsonify({"ok": True, "document_id": doc.id, "redirect_url": url_for('documents.document_detail', id=doc.id)})
@@ -328,18 +279,12 @@ def import_ddt_confirm():
 def api_ddt_out_create():
     try:
         payload = request.get_json(force=True)
-        data_str = payload.get("data")
         cliente_nome = payload.get("cliente")
         mag_id = payload.get("magazzino_id")
         righe = payload.get("righe") or []
-        if not data_str or not cliente_nome or not mag_id or not righe:
-            return jsonify({"ok": False, "error": "Dati insufficienti (data, cliente, magazzino, righe)"}), 400
+        if not cliente_nome or not mag_id or not righe:
+            return jsonify({"ok": False, "error": "Dati insufficienti (cliente, magazzino, righe)"}), 400
 
-        from decimal import Decimal as D
-        doc_date = parse_it_date(data_str)
-        anno = doc_date.year
-
-        # Partner (Cliente)
         partner = Partner.query.filter_by(nome=cliente_nome).first()
         if partner is None:
             partner = Partner(nome=cliente_nome, tipo='Cliente')
@@ -348,26 +293,14 @@ def api_ddt_out_create():
         elif partner.tipo != 'Cliente':
             partner.tipo = 'Cliente'
 
-        # Magazzino
         mag = Magazzino.query.get(int(mag_id))
         if not mag:
             return jsonify({"ok": False, "error": "Magazzino non trovato"}), 400
 
-        # Documento DDT_OUT
-        doc = Documento(tipo='DDT_OUT', anno=anno, data=doc_date, partner_id=partner.id, magazzino_id=mag.id, status='Bozza')
-        for _ in range(3):
-            doc.numero = next_doc_number('DDT_OUT', anno)
-            try:
-                db.session.add(doc)
-                db.session.flush()
-                break
-            except IntegrityError:
-                db.session.rollback()
-        else:
-            return jsonify({"ok": False, "error": "Assegnazione numero documento fallita"}), 500
-
+        doc = Documento(tipo='DDT_OUT', partner_id=partner.id, magazzino_id=mag.id, status='Bozza')
+        db.session.add(doc)
+        db.session.flush()
         
-        # Righe con mastrino per riga (RICAVO) — robusto e tollerante
         default_m = _default_ricavo_mastrino()
         errors = []
         for idx, r in enumerate(righe, start=1):
@@ -380,22 +313,19 @@ def api_ddt_out_create():
 
                 um = unify_um(r.get('um'))
                 qty_dec = q_dec(qty_raw, field="Quantità")
-                price = _extract_unit_price(r, qty_dec)  # prezzo di vendita
+                price = _extract_unit_price(r, qty_dec)
 
                 mastrino_row = (r.get('mastrino_codice') or '').strip() or default_m
                 m = Mastrino.query.filter_by(codice=mastrino_row).first()
                 if not m:
                     mastrino_row = default_m
 
-                # Articolo: cerca per codice interno, poi fornitore; fallback crea nuovo
                 art = None
                 if codice:
                     art = Articolo.query.filter_by(codice_interno=codice).first()
-                    if not art:
-                        art = Articolo.query.filter_by(codice_fornitore=codice).first()
                 if art is None:
                     internal = gen_internal_code('OUT', supplier_code=codice or None)
-                    art = Articolo(codice_interno=internal, codice_fornitore=None, descrizione=descr)
+                    art = Articolo(codice_interno=internal, descrizione=descr)
                     db.session.add(art); db.session.flush()
 
                 riga = RigaDocumento(
@@ -413,7 +343,6 @@ def api_ddt_out_create():
 
         if errors:
             raise ValueError(" ; ".join(errors))
-
 
         db.session.commit()
         return jsonify({"ok": True, "document_id": doc.id, "redirect_url": url_for('documents.document_detail', id=doc.id)})
@@ -491,7 +420,6 @@ def clear_articles():
 
 @importing_bp.route("/api/inventory/search", methods=["GET"])
 def api_inventory_search():
-    # import locali per evitare NameError anche con import globali non aggiornati
     try:
         from ..models import Giacenza, Articolo
         from sqlalchemy import or_
