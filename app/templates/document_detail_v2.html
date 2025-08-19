@@ -60,35 +60,33 @@
 {% block scripts %}
 <script>
 (function(){
-  const docId = {{ doc.id }};
-  let docData = null;
+  var docId = {{ doc.id }};
+  var docData = null;
 
-  const actionsBar = document.getElementById('actions-bar');
-  const docTitle = document.getElementById('doc-title');
-  const docStatus = document.getElementById('doc-status');
-  const docHeader = document.getElementById('doc-header');
-  const righeContainer = document.getElementById('righe-container');
-  const allegatiContainer = document.getElementById('allegati-container');
-  const addLineFormContainer = document.getElementById('add-line-form-container');
+  var actionsBar = document.getElementById('actions-bar');
+  var docTitle = document.getElementById('doc-title');
+  var docStatus = document.getElementById('doc-status');
+  var docHeader = document.getElementById('doc-header');
+  var righeContainer = document.getElementById('righe-container');
+  var allegatiContainer = document.getElementById('allegati-container');
+  var addLineFormContainer = document.getElementById('add-line-form-container');
 
   // --- FUNZIONI DI RENDER ---
   function render() {
     if (!docData) return;
 
     // Titolo e stato
-    docTitle.textContent = `Documento ${docData.tipo} ${docData.numero ? `n. ${docData.numero}/${docData.anno}` : '(Bozza)'}`;
+    docTitle.textContent = 'Documento ' + docData.tipo + (docData.numero ? ' n. ' + docData.numero + '/' + docData.anno : ' (Bozza)');
     docStatus.textContent = docData.status;
 
     // Azioni
     renderActions();
 
     // Intestazione
-    let dataDoc = docData.data ? new Date(docData.data).toLocaleDateString('it-IT') : 'Non assegnata';
-    docHeader.innerHTML = `
-      <div><span class="text-gray-500">Controparte:</span> ${docData.partner_nome || 'N/D'}</div>
-      <div><span class="text-gray-500">Magazzino:</span> ${docData.magazzino_info || 'N/D'}</div>
-      <div><span class="text-gray-500">Data Documento:</span> ${dataDoc}</div>
-    `;
+    var dataDoc = docData.data ? new Date(docData.data).toLocaleDateString('it-IT') : 'Non assegnata';
+    docHeader.innerHTML = '<div><span class="text-gray-500">Controparte:</span> ' + (docData.partner_nome || 'N/D') + '</div>' +
+                          '<div><span class="text-gray-500">Magazzino:</span> ' + (docData.magazzino_info || 'N/D') + '</div>' +
+                          '<div><span class="text-gray-500">Data Documento:</span> ' + dataDoc + '</div>';
 
     // Allegati
     renderAllegati();
@@ -103,73 +101,63 @@
   function renderActions() {
     actionsBar.innerHTML = ''; // Pulisce i pulsanti
     if (docData.status === 'Bozza') {
-      actionsBar.innerHTML += `
-        <button id="btn-delete-draft" class="px-3 py-2 rounded bg-red-600 text-white text-sm">Elimina Bozza</button>
-        <button id="btn-confirm" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Conferma DDT</button>
-      `;
+      actionsBar.innerHTML += '<button id="btn-delete-draft" class="px-3 py-2 rounded bg-red-600 text-white text-sm">Elimina Bozza</button>' +
+                              '<button id="btn-confirm" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Conferma DDT</button>';
     } else if (docData.status === 'Confermato') {
-       actionsBar.innerHTML += `
-        <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="/files/export-document/${docId}.pdf">Esporta PDF</a>
-      `;
+       actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="/files/export-document/' + docId + '.pdf">Esporta PDF</a>';
     }
-    actionsBar.innerHTML += `<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for('documents.documents_in') }}">Torna all'archivio</a>`;
+    actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for(\'documents.documents_in\') }}">Torna all\'archivio</a>';
     bindActionEvents();
   }
 
   function renderAllegati() {
-    const allegati = docData.allegati || [];
+    var allegati = docData.allegati || [];
     if (!allegati.length) {
       allegatiContainer.innerHTML = '';
       return;
     }
-    let html = '<h3 class="font-semibold text-sm mb-2">Allegati</h3><div class="flex flex-col gap-1">';
+    var html = '<h3 class="font-semibold text-sm mb-2">Allegati</h3><div class="flex flex-col gap-1">';
     allegati.forEach(function(a) {
-      html += `
-        <a href="${a.url}" target="_blank" class="text-sm text-blue-600 hover:underline inline-flex items-center">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 11-2 0V4H6v12a1 1 0 11-2 0V4zm5 8a1 1 0 011-1h2a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
-          ${a.filename}
-        </a>
-      `;
+      html += '<a href="' + a.url + '" target="_blank" class="text-sm text-blue-600 hover:underline inline-flex items-center">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 11-2 0V4H6v12a1 1 0 11-2 0V4zm5 8a1 1 0 011-1h2a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>' +
+              a.filename +
+              '</a>';
     });
     html += '</div>';
     allegatiContainer.innerHTML = html;
   }
 
   function renderRighe() {
-    const rows = docData.righe || [];
+    var rows = docData.righe || [];
     if (!rows.length) {
       righeContainer.innerHTML = '<div class="text-sm text-gray-500 p-4 text-center">Nessuna riga in questo documento.</div>';
       return;
     }
     
-    let html = `
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-100">
-            <tr>
-              <th class="p-2 text-left">Cod. Interno</th>
-              <th class="p-2 text-left">Cod. Fornitore</th>
-              <th class="p-2 text-left">Descrizione</th>
-              <th class="p-2 text-right">Q.tà</th>
-              <th class="p-2 text-right">Prezzo</th>
-              <th class="p-2 text-left">Mastrino</th>
-              ${docData.status === 'Bozza' ? '<th class="p-2"></th>' : ''}
-            </tr>
-          </thead>
-          <tbody>
-    `;
+    var html = '<div class="overflow-x-auto">' +
+        '<table class="w-full text-sm">' +
+          '<thead class="bg-gray-100">' +
+            '<tr>' +
+              '<th class="p-2 text-left">Cod. Interno</th>' +
+              '<th class="p-2 text-left">Cod. Fornitore</th>' +
+              '<th class="p-2 text-left">Descrizione</th>' +
+              '<th class="p-2 text-right">Q.tà</th>' +
+              '<th class="p-2 text-right">Prezzo</th>' +
+              '<th class="p-2 text-left">Mastrino</th>' +
+              (docData.status === 'Bozza' ? '<th class="p-2"></th>' : '') +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>';
     rows.forEach(function(r) {
-      html += `
-        <tr class="border-t hover:bg-gray-50" data-line-id="${r.id}">
-          <td class="p-2 font-mono text-xs">${r.codice_interno || ''}</td>
-          <td class="p-2 font-mono text-xs">${r.codice_fornitore || ''}</td>
-          <td class="p-2">${r.descrizione || ''}</td>
-          <td class="p-2 text-right">${(r.quantita || 0).toFixed(3)}</td>
-          <td class="p-2 text-right">${(r.prezzo || 0).toFixed(2)} €</td>
-          <td class="p-2">${r.mastrino_codice || ''}</td>
-          ${docData.status === 'Bozza' ? `<td class="p-2 text-right"><button class="btn-delete-line text-red-500 hover:underline text-xs" data-line-id="${r.id}">Elimina</button></td>` : ''}
-        </tr>
-      `;
+      html += '<tr class="border-t hover:bg-gray-50" data-line-id="' + r.id + '">' +
+          '<td class="p-2 font-mono text-xs">' + (r.codice_interno || '') + '</td>' +
+          '<td class="p-2 font-mono text-xs">' + (r.codice_fornitore || '') + '</td>' +
+          '<td class="p-2">' + (r.descrizione || '') + '</td>' +
+          '<td class="p-2 text-right">' + (r.quantita || 0).toFixed(3) + '</td>' +
+          '<td class="p-2 text-right">' + (r.prezzo || 0).toFixed(2) + ' €</td>' +
+          '<td class="p-2">' + (r.mastrino_codice || '') + '</td>' +
+          (docData.status === 'Bozza' ? '<td class="p-2 text-right"><button class="btn-delete-line text-red-500 hover:underline text-xs" data-line-id="' + r.id + '">Elimina</button></td>' : '') +
+        '</tr>';
     });
     html += '</tbody></table></div>';
     righeContainer.innerHTML = html;
@@ -180,27 +168,27 @@
   async function apiCall(url, options) {
     options = options || {};
     try {
-      const res = await fetch(url, options);
-      const data = await res.json();
+      var res = await fetch(url, options);
+      var data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || `Errore HTTP ${res.status}`);
+        throw new Error(data.error || 'Errore HTTP ' + res.status);
       }
       return data;
     } catch (e) {
-      alert(`Errore di comunicazione: ${e.message}`);
+      alert('Errore di comunicazione: ' + e.message);
       throw e;
     }
   }
   
   async function loadData() {
-    const data = await apiCall('/api/documents/' + docId + '/json');
+    var data = await apiCall('/api/documents/' + docId + '/json');
     docData = data.doc;
     render();
   }
 
   // --- BINDING EVENTI ---
   function bindActionEvents() {
-    const btnConfirm = document.getElementById('btn-confirm');
+    var btnConfirm = document.getElementById('btn-confirm');
     if (btnConfirm) {
       btnConfirm.addEventListener('click', async function() {
         if (confirm('Sei sicuro di voler confermare questo DDT? Verranno assegnati numero e data di oggi. L\'operazione è irreversibile.')) {
@@ -210,7 +198,7 @@
       });
     }
 
-    const btnDeleteDraft = document.getElementById('btn-delete-draft');
+    var btnDeleteDraft = document.getElementById('btn-delete-draft');
     if (btnDeleteDraft) {
       btnDeleteDraft.addEventListener('click', async function() {
         if (confirm('Sei sicuro di voler eliminare questa bozza? L\'operazione è irreversibile.')) {
@@ -224,7 +212,7 @@
   function bindLineEvents() {
     document.querySelectorAll('.btn-delete-line').forEach(function(btn) {
       btn.addEventListener('click', async function(e) {
-        const lineId = e.target.dataset.lineId;
+        var lineId = e.target.dataset.lineId;
         if (confirm('Sei sicuro di voler eliminare questa riga?')) {
           await apiCall('/api/documents/lines/' + lineId + '/delete', { method: 'POST' });
           await loadData();
@@ -235,9 +223,9 @@
 
   document.getElementById('add-line-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    const articoloId = document.getElementById('add-line-articolo-id').value;
-    const qty = document.getElementById('add-line-qty').value;
-    const price = document.getElementById('add-line-price').value;
+    var articoloId = document.getElementById('add-line-articolo-id').value;
+    var qty = document.getElementById('add-line-qty').value;
+    var price = document.getElementById('add-line-price').value;
 
     if (!articoloId) {
       alert('Seleziona un articolo dalla ricerca.');
