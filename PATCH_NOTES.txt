@@ -1,0 +1,11 @@
+Export PDF (con allegato): allega SOLO il DDT importato del documento
+Data: 2025-08-18 18:59:39
+
+- Sostituita la raccolta allegati: ora seleziona esclusivamente l'allegato PDF che rappresenta il 'DDT originale importato'.
+- Criteri di selezione:
+  • campo Allegato.note contenente 'importat', 'original', o 'ddt' (case-insensitive), oppure
+  • nome file che contiene 'import', 'orig', o 'ddt'.
+- Se non ci sono note/naming ma esiste un solo PDF allegato, usa quello.
+- RIMOSSO il fallback che scansionava tutta la cartella del documento (non più necessario).
+
+Effetto: l'export 'con DDT importato' unirà SOLO quel PDF. Nessun altro PDF verrà allegato.

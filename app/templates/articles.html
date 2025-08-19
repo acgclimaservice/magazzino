@@ -1,0 +1,64 @@
+{% extends "_base.html" %}
+{% block title %}Articoli{% endblock %}
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow">
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Articoli</h1>
+    <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ url_for('articles.new_article') }}">Nuovo articolo</a>
+  </div>
+
+  <div class="overflow-x-auto mt-4">
+    <table class="w-full text-sm border">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="p-2 text-left">Codice interno</th>
+          <th class="p-2 text-left">Descrizione</th>
+          <th class="p-2 text-left">Fornitore</th>
+          <th class="p-2 text-left">Cod. fornitore</th>
+          <th class="p-2 text-left">Produttore</th>
+          <th class="p-2 text-left">Cod. produttore</th>
+          <th class="p-2 text-right">Scorta min</th>
+          <th class="p-2 text-right">Q.tà riordino</th>
+          <th class="p-2 text-right">Ult. costo</th>
+          <th class="p-2">Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in articoli.items %}
+        <tr class="border-t hover:bg-gray-50">
+          <td class="p-2">{{ a.codice_interno }}</td>
+          <td class="p-2">{{ a.descrizione }}</td>
+          <td class="p-2">{{ a.fornitore or '' }}</td>
+          <td class="p-2">{{ a.codice_fornitore or '' }}</td>
+          <td class="p-2">{{ a.produttore or '' }}</td>
+          <td class="p-2">{{ a.codice_produttore or '' }}</td>
+          <td class="p-2 text-right">{{ a.qta_scorta_minima }}</td>
+          <td class="p-2 text-right">{{ a.qta_riordino }}</td>
+          <td class="p-2 text-right">{{ a.last_cost }}</td>
+          <td class="p-2 whitespace-nowrap">
+            <a class="text-blue-700 hover:underline text-sm" href="{{ url_for('articles.edit_article', id=a.id) }}">Modifica</a>
+            <form class="inline" method="post" action="{{ url_for('articles.delete_article', id=a.id) }}" onsubmit="return confirm('Eliminare articolo?')">
+              <button class="ml-2 text-red-700 hover:underline text-sm">Elimina</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td class="p-2 text-gray-500" colspan="10">Nessun articolo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if articoli.pages > 1 %}
+  <div class="mt-3 flex gap-2">
+    {% if articoli.has_prev %}
+      <a class="px-2 py-1 border rounded" href="{{ url_for('articles.articles', page=articoli.prev_num) }}">« Prev</a>
+    {% endif %}
+    <span class="px-2 py-1">Pagina {{ articoli.page }} / {{ articoli.pages }}</span>
+    {% if articoli.has_next %}
+      <a class="px-2 py-1 border rounded" href="{{ url_for('articles.articles', page=articoli.next_num) }}">Next »</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

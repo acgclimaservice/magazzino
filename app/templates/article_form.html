@@ -1,0 +1,57 @@
+{% extends "_base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow">
+  <h1 class="text-xl font-semibold mb-3">{{ title }}</h1>
+  <form method="post" action="">
+    <div class="grid md:grid-cols-4 gap-3">
+      <div>
+        <label class="text-xs text-gray-500">Codice interno</label>
+        <input name="codice_interno" value="{{ articolo.codice_interno if articolo else '' }}" class="border rounded w-full p-2" required>
+      </div>
+      <div class="md:col-span-3">
+        <label class="text-xs text-gray-500">Descrizione</label>
+        <input name="descrizione" value="{{ articolo.descrizione if articolo else '' }}" class="border rounded w-full p-2" required>
+      </div>
+
+      <div>
+        <label class="text-xs text-gray-500">Fornitore</label>
+        <input name="fornitore" value="{{ articolo.fornitore if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Codice fornitore</label>
+        <input name="codice_fornitore" value="{{ articolo.codice_fornitore if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Produttore</label>
+        <input name="produttore" value="{{ articolo.produttore if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Codice produttore</label>
+        <input name="codice_produttore" value="{{ articolo.codice_produttore if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+
+      <div>
+        <label class="text-xs text-gray-500">Scorta minima</label>
+        <input name="qta_scorta_minima" type="number" step="0.001" value="{{ articolo.qta_scorta_minima if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Q.tà per riordino</label>
+        <input name="qta_riordino" type="number" step="0.001" value="{{ articolo.qta_riordino if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Barcode</label>
+        <input name="barcode" value="{{ articolo.barcode if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Ultimo costo</label>
+        <input name="last_cost" type="number" step="0.01" value="{{ articolo.last_cost if articolo else '' }}" class="border rounded w-full p-2">
+      </div>
+    </div>
+    <div class="mt-4">
+      <button class="px-3 py-2 rounded bg-emerald-600 text-white">Salva</button>
+      <a href="{{ url_for('articles.articles') }}" class="ml-2 text-blue-700 hover:underline">Annulla</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

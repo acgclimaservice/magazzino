@@ -1,0 +1,315 @@
+{% extends "_base.html" %}
+{% block title %}Nuovo DDT OUT{% endblock %}
+{% block content %}
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.tw-spin { animation: spin 1s linear infinite; }
+
+/* Autocomplete dropdown per Descrizione (selezione da magazzino) */
+.desc-wrapper { position: relative; }
+.desc-dd { position: absolute; left: 0; right: 0; top: 100%; max-height: 220px; overflow-y: auto; border: 1px solid #ddd; border-radius: 0.375rem; background: #fff; z-index: 60; box-shadow: 0 4px 10px rgba(0,0,0,.08); }
+.desc-dd.hidden { display: none; }
+.desc-dd .opt { display:flex; justify-content:space-between; gap:.5rem; padding:.35rem .5rem; cursor:pointer; }
+.desc-dd .opt:hover { background:#f3f4f6; }
+.desc-dd .code { font-weight:600; }
+.desc-dd .stock { min-width:5rem; text-align:right; color:#374151; }
+
+#rows-container { max-height: 65vh; overflow-y: auto; }
+/* make dropdown stay on top */
+.desc-dd { z-index: 9999; }
+</style>
+
+<div id="loading-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+  <div class="bg-white rounded-xl shadow p-5 flex items-center gap-4">
+    <div class="h-8 w-8 rounded-full border-2 border-gray-300 border-t-indigo-600 tw-spin"></div>
+    <div>
+      <div class="font-semibold text-gray-800">Operazione in corso…</div>
+      <div class="msg text-sm text-gray-600">Elaborazione…</div>
+    </div>
+  </div>
+</div>
+
+<div class="bg-white p-6 rounded-xl shadow space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Nuovo DDT in uscita</h1>
+    <div class="flex gap-2">
+      <a href="{{ url_for('core.menu') }}" class="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm border">Torna al menu</a>
+      <button id="btn-save" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Conferma e crea</button>
+    </div>
+  </div>
+
+  <!-- Meta -->
+  <div class="grid md:grid-cols-4 gap-4 text-sm">
+    <div>
+      <label class="block text-gray-600 mb-1">Data DDT</label>
+      <input id="fld-data" type="date" class="border rounded-md p-2 w-full">
+    </div>
+    <div class="md:col-span-2">
+      <label class="block text-gray-600 mb-1">Cliente</label>
+      <input id="fld-cliente" type="text" placeholder="Ragione sociale cliente" class="border rounded-md p-2 w-full">
+    </div>
+    <div>
+      <label class="block text-gray-600 mb-1">Magazzino</label>
+      <select id="sel-magazzino" class="border rounded-md p-2 w-full"></select>
+    </div>
+  </div>
+
+  <!-- Righe -->
+  <div>
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-lg font-semibold">Righe documento</h2>
+      <button id="btn-add-row" class="px-2 py-1 border rounded text-xs">+ Aggiungi riga</button>
+    </div>
+    <div id="rows-container" class="overflow-x-auto border rounded">
+      <table class="w-full text-xs" id="rows-table">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="p-2 text-left">Codice</th>
+            <th class="p-2 text-left">Descrizione</th>
+            <th class="p-2 text-right">Q.tà</th>
+            <th class="p-2 text-left">UM</th>
+            <th class="p-2 text-right">Prezzo Unit.</th>
+            <th class="p-2 text-left">Mastrino (RICAVO)</th>
+            <th class="p-2"></th>
+          </tr>
+        </thead>
+        <tbody id="rows-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showLoading(msg){
+  const o = document.getElementById('loading-overlay');
+  o.querySelector('.msg').textContent = msg || 'Elaborazione…';
+  o.classList.remove('hidden');
+  document.querySelectorAll('button, input, select').forEach(el => el.disabled = true);
+}
+function hideLoading(){
+  const o = document.getElementById('loading-overlay');
+  o.classList.add('hidden');
+  document.querySelectorAll('button, input, select').forEach(el => el.disabled = false);
+}
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error('Risposta non JSON: ' + t); }
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' su ' + url + '\n' + t);
+  return j;
+}
+async function postJSON(url, data) {
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error('Risposta non JSON: ' + t); }
+  if (!r.ok || j.ok === false) throw new Error((j && j.error) ? j.error : ('HTTP ' + r.status + ' su ' + url + '\n' + t));
+  return j;
+}
+
+let mastriniList = [];
+
+function mastrinoSelectHTML(selected) {
+  const opts = mastriniList.map(m => {
+    const sel = (m.codice === selected) ? 'selected' : '';
+    return `<option value="${m.codice}" ${sel}>${m.codice} — ${m.descrizione}</option>`;
+  }).join('');
+  return `<select class="border rounded-md p-1">${opts}</select>`;
+}
+function addRow(data={}) {
+  const tb = document.getElementById('rows-body');
+  const defaultM = (mastriniList.length ? mastriniList[0].codice : '');
+  const tr = document.createElement('tr');
+  tr.className = 'border-t';
+  tr.innerHTML = `
+    <td class="p-2"><input class="w-40 border rounded p-1" placeholder="Codice" value="${(data.codice ?? '').toString().replace(/"/g,'&quot;')}"></td>
+    <td class="p-2 desc-cell"><div class="desc-wrapper"><input class="w-full border rounded p-1 desc-input" placeholder="Descrizione" value="${(data.descrizione ?? '').toString().replace(/\"/g, '&quot;')}" /><div class="desc-dd hidden"></div></div></td>
+    <td class="p-2 text-right"><input type="number" step="0.001" class="w-24 border rounded p-1 text-right" value="${Number(data.quantità ?? data.quantita ?? data.qty ?? 1)}"></td>
+    <td class="p-2"><input class="w-16 border rounded p-1" value="${(data.um ?? 'PZ').toString().replace(/"/g,'&quot;')}"></td>
+    <td class="p-2 text-right"><input type="number" step="0.01" class="w-24 border rounded p-1 text-right" value="${Number(data.prezzo_unitario ?? data.prezzo ?? 0)}"></td>
+    <td class="p-2">${mastrinoSelectHTML(data.mastrino_codice || defaultM)}</td>
+    <td class="p-2 text-right"><button class="px-2 py-1 border rounded text-xs btn-del">X</button></td>
+  `;
+  tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
+  tb.appendChild(tr);
+  wireDescAutocomplete(tr);
+}
+function collectRows() {
+  const tb = document.getElementById('rows-body');
+  const out = [];
+  tb.querySelectorAll('tr').forEach(tr => {
+    const inputs = tr.querySelectorAll('td input');
+    const sel = tr.querySelector('td select');
+    out.push({
+      codice: inputs[0].value.trim(),
+      descrizione: inputs[1].value.trim(),
+      quantità: parseFloat(inputs[2].value || '0'),
+      um: inputs[3].value.trim() || 'PZ',
+      prezzo_unitario: parseFloat(inputs[4].value || '0'),
+      mastrino_codice: sel ? sel.value : null
+    });
+  });
+  return out;
+}
+
+document.getElementById('btn-add-row').addEventListener('click', () => addRow());
+
+document.getElementById('btn-save').addEventListener('click', async () => {
+  try {
+    showLoading('Creazione documento…');
+    const payload = {
+      data: document.getElementById('fld-data').value,
+      cliente: document.getElementById('fld-cliente').value,
+      magazzino_id: document.getElementById('sel-magazzino').value || null,
+      righe: collectRows()
+    };
+    const res = await postJSON('/api/ddt-out/create', payload);
+    if (res.redirect_url) window.location.href = res.redirect_url;
+    else if (res.document_id) window.location.href = '/documents/' + res.document_id;
+    else showError('Creato ma senza URL di redirect.');
+  } catch (err) {
+    showError(err, 'POST /api/ddt-out/create');
+  } finally {
+    hideLoading();
+  }
+});
+
+async function loadLookups() {
+  const [mag, mastr] = await Promise.all([
+    getJSON('/api/magazzini'),
+    getJSON('/api/mastrini?tipo=RICAVO')
+  ]);
+  // magazzini
+  const sel = document.getElementById('sel-magazzino');
+  sel.innerHTML = '';
+  for (const m of mag) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.codice} — ${m.nome}`;
+    sel.appendChild(opt);
+  }
+  // mastrini
+  mastriniList = mastr;
+}
+
+// bootstrap
+
+// --- Helpers UI di base (safe defaults) ---
+window.showError = window.showError || function(err, ctx){
+  try{
+    let msg = typeof err === 'string' ? err : (err && err.message) ? err.message : (err && err.error) ? err.error : String(err);
+    if (ctx) msg = ctx + ': ' + msg;
+    alert('Errore: ' + msg);
+  }catch(e){ alert('Errore generico'); }
+};
+window.showLoading = window.showLoading || function(msg){
+  const btn = document.getElementById('btn-confirm') || document.querySelector('[data-role="btn-confirm"]');
+  if (btn){ btn.dataset._oldtxt = btn.textContent; btn.textContent = msg || 'Elaborazione…'; btn.disabled = true; }
+};
+window.hideLoading = window.hideLoading || function(){
+  const btn = document.getElementById('btn-confirm') || document.querySelector('[data-role="btn-confirm"]');
+  if (btn){ btn.textContent = btn.dataset._oldtxt || 'Conferma'; btn.disabled = false; }
+};
+
+// Wrappa fetch JSON con estrazione chiara dell'errore
+async function postJSON(url, payload){
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const text = await r.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch { /* lascia text grezzo */ }
+  if (!r.ok){
+    let msg = (data && (data.error || data.message)) || ('HTTP ' + r.status);
+    if (data && Array.isArray(data.errors) && data.errors.length) msg += ' — ' + data.errors.join(' ; ');
+    throw new Error(msg);
+  }
+  return data !== null ? data : text;
+}
+
+
+
+// --- Autocomplete Descrizione con giacenze ---
+function positionDropdown(container){
+  const input = container.querySelector('.desc-input');
+  const dd = container.querySelector('.desc-dd');
+  if (!input || !dd) return;
+  const r = input.getBoundingClientRect();
+  const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+  dd.style.position = 'fixed';
+  dd.style.left = Math.max(8, Math.min(r.left, vw - r.width - 8)) + 'px';
+  dd.style.top = (r.bottom + 2) + 'px';
+  dd.style.width = r.width + 'px';
+  dd.style.maxHeight = '40vh';
+}
+
+let _descTimer = null;
+function debounce(fn, ms){ return function(...args){ clearTimeout(_descTimer); _descTimer = setTimeout(()=>fn.apply(this,args), ms); }; }
+async function fetchInventory(q){
+  const magSel = document.getElementById('sel-magazzino');
+  const magId = magSel ? parseInt(magSel.value, 10) : 0;
+  if (!magId) return [];
+  const url = `/api/inventory/search?magazzino_id=${magId}&q=${encodeURIComponent((q||'').trim())}&limit=50`;
+  const r = await fetch(url);
+  const t = await r.text();
+  let list; try { list = JSON.parse(t); } catch { throw new Error('Risposta non JSON: ' + t); }
+  if (!r.ok) throw new Error((list && list.error) ? list.error : ('HTTP '+r.status));
+  return Array.isArray(list) ? list : [];
+}
+function renderDropdown(container, items){
+  const dd = container.querySelector('.desc-dd');
+  dd.innerHTML = '';
+  if (!items.length){
+    dd.innerHTML = '<div class="opt text-gray-500">Nessun articolo in stock nel magazzino selezionato</div>';
+    dd.classList.remove('hidden');
+    return;
+  }
+  items.forEach(it => {
+    const code = it.codice_interno || it.codice_fornitore || '';
+    const row = document.createElement('div');
+    row.className = 'opt';
+    row.innerHTML = `<span class="code">${code}</span><span class="flex-1 text-gray-700">${(it.descrizione||'').replace(/</g,'&lt;')}</span><span class="stock">${it.giacenza ?? ''}</span>`;
+    row.addEventListener('click', () => {
+      const tr = container.closest('tr');
+      const inputs = tr.querySelectorAll('td input');
+      if (inputs[0]) inputs[0].value = code; // codice
+      if (inputs[1]) inputs[1].value = it.descrizione || code; // descrizione
+      if (inputs[2] && (!inputs[2].value || Number(inputs[2].value) === 0)) inputs[2].value = 1; // qty default
+      dd.classList.add('hidden');
+    });
+    dd.appendChild(row);
+  });
+  dd.classList.remove('hidden');
+}
+function wireDescAutocomplete(tr){
+  const container = tr.querySelector('.desc-cell .desc-wrapper');
+  if (!container) return;
+  const input = container.querySelector('.desc-input');
+  const dd = container.querySelector('.desc-dd');
+  const doSearch = debounce(async () => {
+    try {
+      const list = await fetchInventory(input.value || '');
+      positionDropdown(container); renderDropdown(container, list);
+    } catch(err){ console.error(err); }
+  }, 250);
+  input.addEventListener('input', doSearch);
+  input.addEventListener('focus', async () => { try{ const list = await fetchInventory(''); positionDropdown(container); renderDropdown(container, list); } catch(e){} });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape'){ dd.classList.add('hidden'); } });
+  document.addEventListener('click', (e) => { if (!container.contains(e.target)){ dd.classList.add('hidden'); } });
+}
+
+(async () => {
+  try {
+    showLoading('Lookup…');
+    await loadLookups();
+    const today = new Date().toISOString().slice(0,10);
+    document.getElementById('fld-data').value = today;
+    addRow();
+  } catch(err){
+    showError(err, 'bootstrap loadLookups');
+  } finally {
+    hideLoading();
+  }
+})();
+</script>
+{% endblock %}

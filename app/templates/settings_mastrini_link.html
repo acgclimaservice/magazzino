@@ -1,0 +1,10 @@
+
+{% extends "_base.html" %}
+{% block content %}
+<h1>Collegamento Mastrini Acquisti → Vendite</h1>
+<form method="post" enctype="multipart/form-data">
+  <p>Carica Excel con colonne: Categoria (opz.), Mastrino_Acquisto, Mastrino_Vendita.</p>
+  <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+  <button class="btn">Carica</button>
+</form>
+{% endblock %}

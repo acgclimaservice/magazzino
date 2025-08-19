@@ -1,0 +1,142 @@
+<!-- SIG: doc_detail_v2 applied to document_detail.html -->
+<!-- SIG: doc_detail_v2 / btn-edit expected -->
+{% extends "_base.html" %}
+{% block title %}Dettaglio Documento{% endblock %}
+
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-lg font-semibold" id="doc-title">Documento {{ doc.tipo }} n. {{ doc.numero }} / {{ doc.anno or '' }}</div>
+      <div class="text-sm text-gray-600">Stato: <span id="doc-status">{{ doc.status }}</span></div>
+    </div>
+    <div class="flex gap-2">
+      <a id="btn-export-base" href="/files/export-document-base/{{ doc.id }}.pdf" class="px-3 py-2 rounded bg-slate-600 text-white text-sm hidden">PDF documento</a>
+      <a id="btn-export-with" href="/files/export-document-with-imported/{{ doc.id }}.pdf" class="px-3 py-2 rounded bg-slate-800 text-white text-sm hidden">PDF con DDT importato</a>
+      <button id="btn-edit" class="px-3 py-2 rounded bg-gray-700 text-white text-sm hidden">Modifica</button>
+      <button id="btn-confirm" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm hidden">Conferma DDT</button>
+      <button id="btn-convert" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm hidden">Trasforma in DDT OUT</button>
+    </div>
+  </div>
+
+  <div class="mt-3 grid md:grid-cols-3 gap-2 text-sm text-gray-700" id="doc-header">
+    <div><span class="text-gray-500">Controparte:</span> <span id="doc-partner">{{ doc.partner.nome if doc.partner else "" }}</span></div>
+    <div><span class="text-gray-500">Magazzino:</span> <span id="doc-mag">{{ (doc.magazzino.codice ~ " - " ~ doc.magazzino.nome) if doc.magazzino else "" }}</span></div>
+    {% if doc.tipo == "DDT_IN" %}
+    <div><span class="text-gray-500">Commessa (Cliente):</span> <span id="doc-commessa">{{ doc.commessa.nome if doc.commessa else "—" }}</span></div>
+    {% endif %}
+  </div>
+
+  <div id="righe" class="mt-3">
+    <div class="text-sm text-gray-500">Caricamento righe…</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const docId = {{ doc.id }};
+
+  const btnConfirm = document.getElementById('btn-confirm');
+  const btnConvert = document.getElementById('btn-convert');
+  const btnExportBase = document.getElementById('btn-export-base');
+  const btnExportWith = document.getElementById('btn-export-with');
+  const righeEl = document.getElementById('righe');
+  const statusEl = document.getElementById('doc-status');
+  const titleEl = document.getElementById('doc-title');
+  const partnerEl = document.getElementById('doc-partner');
+  const magEl = document.getElementById('doc-mag');
+
+  function fmt3(n){
+    const x = Number(n||0);
+    if (Number.isFinite(x)) return x.toFixed(3);
+    return String(n||0);
+  }
+  
+  async function loadMastrini(tipo){
+    try{
+      const url = tipo ? `/api/mastrini?tipo=${encodeURIComponent(tipo)}` : '/api/mastrini';
+      const res = await fetch(url);
+      if(!res.ok) return [];
+      const j = await res.json().catch(()=>[]);
+      return Array.isArray(j) ? j : [];
+    }catch(e){ return []; }
+  }
+
+  async function loadDoc(){
+    const res = await fetch(`/api/documents/${docId}/json`);
+    const j = await res.json();
+    if(!res.ok || !j.ok) throw new Error(j.error || 'Errore caricamento documento');
+    const d = j.doc;
+
+    // header
+    titleEl.textContent = `Documento ${d.tipo} n. ${d.numero} / ${d.anno||''}`;
+    statusEl.textContent = d.status || '';
+    partnerEl.textContent = d.partner || '';
+    // magazzino: mostriamo solo l'ID se non disponibile il nome in JSON
+    if (magEl && d.magazzino_id != null) {
+      magEl.textContent = `ID ${d.magazzino_id}`;
+    }
+
+    // azioni
+    const isBozza = (d.status === 'Bozza');
+    btnConfirm.classList.toggle('hidden', !isBozza);
+    // Consenti trasformazione solo per DDT_IN non annullati
+    const canConvert = (d.tipo === 'DDT_IN' && d.status !== 'Annullato');
+    btnConvert.classList.toggle('hidden', !canConvert);
+
+    // righe
+    const rows = Array.isArray(d.righe) ? d.righe : [];
+    if (!rows.length){
+      righeEl.innerHTML = '<div class="text-sm text-gray-500">Nessuna riga.</div>';
+    } else {
+      const html = [];
+      html.push('<div class="overflow-x-auto"><table class="w-full text-sm border">');
+      html.push('<thead class="bg-gray-50"><tr><th class="p-2">Codice</th><th class="p-2">Descrizione</th><th class="p-2 text-right">Q.tà</th><th class="p-2 text-right">Prezzo</th><th class="p-2">Mastrino</th></tr></thead><tbody>');
+      for (const r of rows){
+        const codice = r.codice_interno || r.codice_fornitore || r.codice_produttore || '';
+        html.push(`<tr class="border-t">
+          <td class="p-2">${codice}</td>
+          <td class="p-2">${r.descrizione || ''}</td>
+          <td class="p-2 text-right">${r.quantita ?? 0}</td>
+          <td class="p-2 text-right"><input class="border rounded p-1 w-28 text-right" type="number" inputmode="decimal" step="0.01" min="0" name="prezzo" value="${r.prezzo??0}"></td>
+          <td class="p-2"><input class="border rounded p-1 w-40" name="mastrino_codice" list="dl-mastrini" placeholder="codice" value="${r.mastrino_codice||''}"}</td>
+        </tr>`);
+      }
+      html.push('</tbody></table></div>');
+      righeEl.innerHTML = html.join('');
+    }
+  }
+
+  btnConfirm?.addEventListener('click', async ()=>{
+    btnConfirm.disabled = true;
+    try{
+      const res = await fetch(`/api/documents/${docId}/confirm`, {method:'POST'});
+      const j = await res.json().catch(()=>({ok:false}));
+      if(!res.ok || !j.ok) throw new Error(j.error || 'Errore conferma');
+      await loadDoc();
+    }catch(e){
+      alert(e.message || e);
+    }finally{
+      btnConfirm.disabled = false;
+    }
+  });
+
+  btnConvert?.addEventListener('click', async ()=>{
+    if (!confirm('Confermi la trasformazione in DDT OUT?')) return;
+    btnConvert.disabled = true;
+    try{
+      const res = await fetch(`/api/documents/${docId}/convert-to-out`, {method:'POST'});
+      const j = await res.json().catch(()=>({ok:false}));
+      if(!res.ok || !j.ok) throw new Error(j.error || 'Errore trasformazione');
+      if (j.url) window.location = j.url; else alert('Creato DDT OUT ID ' + j.id);
+    }catch(e){
+      alert(e.message || e);
+    }finally{
+      btnConvert.disabled = false;
+    }
+  });
+
+  loadDoc().catch(e => alert(e.message || e));
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+--- app/blueprints/files.py (originale)
++++ app/blueprints/files.py (patch)
+@@ -32,3 +32,14 @@
+     if not os.path.exists(abs_p):
+         abort(404)
+     return send_file(abs_p, as_attachment=True, download_name=att.filename, mimetype=att.mime or "application/octet-stream")
++
++
++@files_bp.route("/files/export-document-base/<int:id>.pdf")
++def export_document_base_pdf(id):
++    doc = Documento.query.get_or_404(id)
++    import tempfile, os
++    tmpdir = tempfile.gettempdir()
++    base_pdf = os.path.join(tmpdir, f"doc_{doc.id}_base.pdf")
++    generate_document_pdf(doc, base_pdf)
++    filename = f"{doc.tipo}_{doc.anno}_{doc.numero:04d}_base.pdf"
++    return send_file(base_pdf, as_attachment=True, download_name=filename, mimetype="application/pdf")

@@ -1,0 +1,8 @@
+Magazzino Pro 1.3 — CHANGELOG
+- Allineata architettura Flask (config → DB → blueprint).
+- Template Jinja ripristinati e coerenti (niente .html hard-coded).
+- Pagina Workstation AI integrata, JS unificato in static/js/workstation.js.
+- Aggiunti app.js e database.js (utility mancanti).
+- Pagina Import PDF funzionante (/import-pdf).
+- Error templates 404/500.
+- requirements.txt e .env.example.

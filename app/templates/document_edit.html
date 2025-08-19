@@ -1,0 +1,49 @@
+
+{% extends "_base.html" %}
+{% block content %}
+<h1>Documento {{ doc.type }} n. {{ doc.number }}</h1>
+<table class="table">
+  <thead><tr><th>Codice</th><th>Descrizione</th><th>Q.tà</th><th>Prezzo</th><th>Mastrino ({{ 'acquisto' if doc.type=='IN' else 'vendita' }})</th><th>Azioni</th></tr></thead>
+  <tbody>
+    {% for ln in doc.lines %}
+      <tr>
+        <td>{{ ln.article_code }}</td>
+        <td>{{ ln.description }}</td>
+        <td>{{ ln.quantity }}</td>
+        <td>{{ ln.price }}</td>
+        <td>
+          <input value="{{ ln.mastrino_code }}" data-article="{{ ln.article_code }}" class="mastrino-input">
+          {% if doc.type=='OUT' %}
+            <button class="btn btn-sm propose" data-purchase="{{ ln.purchase_mastrino or '' }}">Suggerisci</button>
+          {% endif %}
+        </td>
+        <td>{% if doc.type=='OUT' %}<span class="badge" data-override="status" style="display:none">Override manuale</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<script>
+document.querySelectorAll('.propose').forEach(btn => {
+  btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const purchase = btn.getAttribute('data-purchase');
+    const row = btn.closest('tr'); const input = row.querySelector('.mastrino-input');
+    const r = await fetch('{{ url_for("documents.propose_sale_mastrino") }}', {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'purchase_code=' + encodeURIComponent(purchase || input.value)
+    });
+    const js = await r.json(); if(js.sale_code){ input.value = js.sale_code; }
+  });
+});
+document.querySelectorAll('.mastrino-input').forEach(inp => {
+  inp.addEventListener('change', async () => {
+    const article = inp.getAttribute('data-article'); const sale = inp.value;
+    const r = await fetch('{{ url_for("documents.override_mastrini") }}', {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'article_code=' + encodeURIComponent(article) + '&sale_code=' + encodeURIComponent(sale)
+    });
+    const js = await r.json(); if(js.ok){ const b = inp.closest('tr').querySelector('[data-override="status"]'); if(b){ b.style.display='inline-block'; } }
+  });
+});
+</script>
+{% endblock %}

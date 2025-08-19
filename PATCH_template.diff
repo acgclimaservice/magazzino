@@ -1,0 +1,15 @@
+--- app/templates/document_detail.html (originale)
++++ app/templates/document_detail.html (patch)
+@@ -15,7 +15,12 @@
+       <button id="btn-edit" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Modifica</button>
+       {% elif doc.status == 'Confermato' %}
+       <button id="btn-reverse" class="px-3 py-2 rounded bg-orange-600 text-white text-sm">Storna</button>
++      {% if doc.tipo == 'DDT_IN' %}
++      <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ safe_url('files.export_document_pdf', '#', id=doc.id) }}">Esporta PDF (con DDT importato)</a>
++      <a class="px-3 py-2 rounded bg-slate-600 text-white text-sm" href="{{ safe_url('files.export_document_base_pdf', '#', id=doc.id) }}">Esporta PDF (solo documento)</a>
++      {% else %}
+       <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ safe_url('files.export_document_pdf', '#', id=doc.id) }}">Esporta PDF</a>
++      {% endif %}
+       {% elif doc.status == 'Stornato' %}
+       <span class="px-3 py-2 rounded bg-yellow-100 text-yellow-900 text-sm">Documento stornato</span>
+       <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ safe_url('files.export_document_pdf', '#', id=doc.id) }}">Esporta PDF</a>

@@ -1,0 +1,40 @@
+<div class="overflow-x-auto">
+<table class="w-full text-sm border">
+  <thead class="bg-gray-100">
+    <tr>
+      <th class="p-2">N./Anno</th>
+      <th class="p-2">Data</th>
+      <th class="p-2">Fornitore</th>
+      <th class="p-2">Magazzino Dest.</th>
+      <th class="p-2">Commessa</th>
+      <th class="p-2">Stato</th>
+      <th class="p-2">Azioni</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for doc in docs %}
+    <tr class="border-t">
+      <td class="p-2">{{ doc.numero }}/{{ doc.anno }}</td>
+      <td class="p-2">{{ doc.data }}</td>
+      <td class="p-2">{{ doc.partner.nome if doc.partner else '' }}</td>
+      <td class="p-2">{{ doc.magazzino.codice if doc.magazzino else '' }}</td>
+      <td class="p-2">{{ doc.commessa.nome if doc.commessa else "" }}</td>
+      <td class="p-2">{{ doc.status }}</td>
+      <td class="p-2">
+        <a class="underline" href="{{ url_for('documents.document_detail', id=doc.id) }}">Apri</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td class="p-2 text-center text-gray-500" colspan="6">Nessun documento</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if pager.pages > 1 %}
+<div class="mt-2 flex items-center gap-2">
+  {% if pager.has_prev %}<a class="px-2 py-1 border rounded" href="{{ url_for(request.endpoint, page=pager.prev_num, **request.args) }}">« Prev</a>{% endif %}
+  <span>Pagina {{ pager.page }} / {{ pager.pages }}</span>
+  {% if pager.has_next %}<a class="px-2 py-1 border rounded" href="{{ url_for(request.endpoint, page=pager.next_num, **request.args) }}">Next »</a>{% endif %}
+</div>
+{% endif %}

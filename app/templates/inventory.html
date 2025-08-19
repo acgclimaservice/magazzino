@@ -1,0 +1,33 @@
+{% extends "_base.html" %}
+{% block title %}Inventario{% endblock %}
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow">
+  <h1 class="text-xl font-semibold mb-3">Inventario</h1>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm border">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="p-2 text-left">Codice</th>
+          <th class="p-2 text-left">Descrizione</th>
+          <th class="p-2 text-right">Giacenza totale</th>
+          <th class="p-2 text-right">Scorta min</th>
+          <th class="p-2 text-right">Ult. costo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in articoli %}
+        <tr class="border-t hover:bg-gray-50">
+          <td class="p-2">{{ a.codice_interno }}</td>
+          <td class="p-2">{{ a.descrizione }}</td>
+          <td class="p-2 text-right">{{ a.giacenza_totale }}</td>
+          <td class="p-2 text-right">{{ a.qta_scorta_minima }}</td>
+          <td class="p-2 text-right">{{ a.last_cost }}</td>
+        </tr>
+        {% else %}
+        <tr><td class="p-2 text-gray-500" colspan="5">Nessun articolo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

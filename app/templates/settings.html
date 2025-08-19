@@ -1,0 +1,98 @@
+{% extends "_base.html" %}
+{% block title %}Impostazioni{% endblock %}
+{% block content %}
+<div class="grid md:grid-cols-3 gap-4">
+
+  <!-- Magazzini -->
+
+  <!-- Mastrini (Ricavi) -->
+  <div class="bg-white p-4 rounded-xl shadow">
+    <h2 class="font-semibold mb-2">Mastrini (Ricavi)</h2>
+    <form method="post" action="{{ url_for('settings.seed_mastrini_ricavi') }}" class="mb-3">
+      <button class="px-3 py-2 rounded bg-blue-600 text-white text-sm">Aggiungi elenco predefinito</button>
+    </form>
+    <form method="post" action="{{ url_for('settings.add_mastrino_ricavo') }}" class="mb-3 flex items-end gap-2">
+      <div>
+        <label class="block text-xs text-gray-600">Codice</label>
+        <input name="codice" class="border rounded px-2 py-1 text-sm" placeholder="es. 0475002000">
+      </div>
+      <div class="flex-1">
+        <label class="block text-xs text-gray-600">Descrizione</label>
+        <input name="descrizione" class="border rounded px-2 py-1 text-sm w-full" placeholder="es. RICAVI MANUTENZIONE ORDINARIA…">
+      </div>
+      <button class="px-3 py-2 rounded bg-gray-800 text-white text-sm">Aggiungi</button>
+    </form>
+    <ul class="text-sm space-y-1 max-h-64 overflow-auto pr-1">
+      {% for m in mastrini_ric %}
+      <li><span class="font-mono">{{ m.codice }}</span> — {{ m.descrizione }}</li>
+      {% else %}
+      <li class="text-gray-500">Nessun mastrino di tipo RICAVO.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="bg-white p-4 rounded-xl shadow">
+    <h2 class="font-semibold mb-2">Magazzini</h2>
+    <form method="post" action="{{ url_for('settings.add_setting', item_type='warehouse') }}" class="grid grid-cols-2 gap-2 mb-3">
+      <input name="codice" placeholder="Codice" class="border rounded p-2">
+      <input name="nome" placeholder="Nome" class="border rounded p-2">
+      <button class="col-span-2 px-3 py-2 rounded bg-emerald-600 text-white">Aggiungi</button>
+    </form>
+    <ul class="text-sm space-y-1">
+      {% for m in magazzini %}
+      <li>{{ m.codice }} — {{ m.nome }}</li>
+      {% else %}
+      <li class="text-gray-500">Nessun magazzino.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Mastrini Acquisto -->
+  <div class="bg-white p-4 rounded-xl shadow">
+    <h2 class="font-semibold mb-2">Mastrini (Acquisto)</h2>
+    <form method="post" action="{{ url_for('settings.add_setting', item_type='mastrino') }}" class="grid grid-cols-3 gap-2 mb-3">
+      <input name="codice" placeholder="Codice" class="border rounded p-2">
+      <input name="descrizione" placeholder="Descrizione" class="border rounded p-2 col-span-2">
+      <input type="hidden" name="tipo" value="ACQUISTO">
+      <button class="col-span-3 px-3 py-2 rounded bg-indigo-600 text-white">Aggiungi</button>
+    </form>
+    <ul class="text-sm space-y-1">
+      {% for m in mastrini_acq %}
+      <li>{{ m.codice }} — {{ m.descrizione }}</li>
+      {% else %}
+      <li class="text-gray-500">Nessun mastrino acquisto.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Partners -->
+  <div class="bg-white p-4 rounded-xl shadow">
+    <h2 class="font-semibold mb-2">Partners</h2>
+<form method="post" action="{{ url_for('settings.import_partners') }}" enctype="multipart/form-data" class="grid grid-cols-3 gap-2 mb-3">
+  <input type="file" name="file" accept=".csv" class="border rounded p-2 col-span-2" required>
+  <select name="default_tipo" class="border rounded p-2">
+    <option value="Cliente">Cliente</option>
+    <option value="Fornitore">Fornitore</option>
+  </select>
+  <button class="col-span-3 px-3 py-2 rounded bg-indigo-600 text-white">Importa CSV partner</button>
+  <div class="col-span-3 text-xs text-gray-500">CSV con intestazioni: nome;tipo (tipo opzionale, verrà usato il default se mancante)</div>
+</form>
+    <form method="post" action="{{ url_for('settings.add_setting', item_type='partner') }}" class="grid grid-cols-3 gap-2 mb-3">
+      <input name="nome" placeholder="Nome" class="border rounded p-2 col-span-2">
+      <select name="tipo" class="border rounded p-2">
+        <option>Fornitore</option>
+        <option>Cliente</option>
+      </select>
+      <button class="col-span-3 px-3 py-2 rounded bg-amber-600 text-white">Aggiungi</button>
+    </form>
+    <ul class="text-sm space-y-1">
+      {% for p in partners %}
+      <li>{{ p.tipo }} — {{ p.nome }}</li>
+      {% else %}
+      <li class="text-gray-500">Nessun partner.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+</div>
+{% endblock %}
