@@ -1,50 +1,34 @@
-from flask import Blueprint, send_file, abort
-import os, tempfile
-from ..models import Documento, Allegato
-from ..services.file_service import generate_document_pdf, merge_pdfs, abs_path_from_rel
+from flask import Blueprint, send_from_directory, current_app, abort
+from ..models import Allegato
+import os
 
 files_bp = Blueprint("files", __name__)
 
-@files_bp.route("/files/export-document/<int:id>.pdf")
-def export_document_pdf(id):
-    """
-    Genera un PDF del documento e lo unisce con eventuali allegati PDF.
-    Questa funzione ora gestisce l'esportazione completa.
-    """
-    doc = Documento.query.get_or_404(id)
-    tmpdir = tempfile.gettempdir()
-    base_pdf = os.path.join(tmpdir, f"doc_{doc.id}_base.pdf")
-    out_pdf = os.path.join(tmpdir, f"doc_{doc.id}_export.pdf")
-    generate_document_pdf(doc, base_pdf)
+@files_bp.route('/files/download/<int:allegato_id>')
+def download_attachment(allegato_id: int):
+    allegato = Allegato.query.get_or_404(allegato_id)
+    
+    # Costruisci il percorso assoluto in modo sicuro
+    abs_path = os.path.join(current_app.root_path, allegato.path)
+    
+    if not os.path.exists(abs_path):
+        abort(404, description="File non trovato sul server.")
 
-    # Raccoglie gli allegati in formato PDF
-    att_paths = []
-    for a in (doc.allegati or []):
-        abs_p = abs_path_from_rel(a.path)
-        if os.path.exists(abs_p) and abs_p.lower().endswith(".pdf"):
-            att_paths.append(abs_p)
+    directory = os.path.dirname(abs_path)
+    filename = os.path.basename(abs_path)
+    
+    return send_from_directory(directory, filename, as_attachment=True)
 
-    merge_pdfs(base_pdf, att_paths, out_pdf)
-    filename = f"{doc.tipo}_{doc.anno}_{doc.numero:04d}.pdf"
-    return send_file(out_pdf, as_attachment=True, download_name=filename, mimetype="application/pdf")
+@files_bp.get("/files/export-document/<int:doc_id>.pdf")
+def export_document(doc_id: int):
+    from ..models import Documento
+    from ..services.pdf_export import export_document_pdf
+    from flask import make_response
 
-@files_bp.route("/files/export-document-base/<int:id>.pdf")
-def export_document_base_pdf(id):
-    """
-    NUOVA FUNZIONE: Esporta solo il PDF base del documento, senza unire gli allegati.
-    """
-    doc = Documento.query.get_or_404(id)
-    tmpdir = tempfile.gettempdir()
-    base_pdf = os.path.join(tmpdir, f"doc_{doc.id}_base_only.pdf")
-    generate_document_pdf(doc, base_pdf)
-    filename = f"{doc.tipo}_{doc.anno}_{doc.numero:04d}_base.pdf"
-    return send_file(base_pdf, as_attachment=True, download_name=filename, mimetype="application/pdf")
-
-
-@files_bp.route("/files/attachment/<int:allegato_id>/download")
-def download_attachment(allegato_id):
-    att = Allegato.query.get_or_404(allegato_id)
-    abs_p = abs_path_from_rel(att.path)
-    if not os.path.exists(abs_p):
-        abort(404)
-    return send_file(abs_p, as_attachment=True, download_name=att.filename, mimetype=att.mime or "application/octet-stream")
+    doc = Documento.query.get_or_404(doc_id)
+    pdf_bytes = export_document_pdf(doc)
+    
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'inline; filename=doc_{doc.id}.pdf'
+    return response
