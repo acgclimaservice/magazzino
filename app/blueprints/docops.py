@@ -3,6 +3,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 from decimal import Decimal as D
 from datetime import datetime, date
+import traceback
 
 from ..extensions import db
 from ..models import Documento, RigaDocumento, Movimento, Articolo, Partner, Magazzino
@@ -72,11 +73,12 @@ def api_document_json(id: int):
         allegati = []
         if hasattr(doc, 'allegati') and doc.allegati:
             for a in doc.allegati:
-                allegati.append({
-                    "id": a.id,
-                    "filename": a.filename,
-                    "url": url_for('files.download_attachment', allegato_id=a.id)
-                })
+                if a and a.id: # Aggiunto controllo di sicurezza
+                    allegati.append({
+                        "id": a.id,
+                        "filename": a.filename,
+                        "url": url_for('files.download_attachment', allegato_id=a.id)
+                    })
 
         doc_out = {
             "id": doc.id,
@@ -98,7 +100,8 @@ def api_document_json(id: int):
 
     except Exception as e:
         # Log dell'errore per un debug più facile
-        print(f"Errore in api_document_json: {str(e)}")
+        print(f"ERRORE GRAVE in api_document_json per doc ID {id}:")
+        traceback.print_exc()
         return jsonify({"ok": False, "error": "Errore interno del server durante il recupero dei dati del documento."}), 500
 
 
