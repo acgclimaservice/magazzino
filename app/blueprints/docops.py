@@ -1,34 +1,5 @@
 from flask import Blueprint, jsonify, request
 from decimal import Decimal as D
-
-import re as _re_num
-
-def _to_decimal_nls(val):
-    """Parse numeri in formato IT/EN:
-    - '1.234,56' -> 1234.56
-    - '1,234.56' -> 1234.56
-    - '35,2'     -> 35.2
-    - '35.2'     -> 35.2
-    Ignora spazi e separatori di migliaia.
-    """
-    if val is None:
-        return None
-    s = str(val).strip()
-    if not s:
-        return None
-    # rimuovi spazi
-    s = _re_num.sub(r"\s+", "", s)
-    if ',' in s and '.' in s:
-        # decimal = ultimo separatore fra , e .
-        dec = ',' if s.rfind(',') > s.rfind('.') else '.'
-        thou = '.' if dec == ',' else ','
-        s = s.replace(thou, '')
-        s = s.replace(dec, '.')
-    else:
-        # assume la virgola come decimale
-        s = s.replace(',', '.')
-    return D(s)
-
 from datetime import datetime, date
 
 from ..extensions import db
@@ -108,23 +79,28 @@ def api_document_json(id: int):
 @docops_bp.post("/api/documents/<int:id>/confirm")
 def api_confirm_document(id: int):
     doc = Documento.query.get_or_404(id)
-    if doc.status == "Annullato":
-        return jsonify({"ok": False, "error": "Documento annullato: non confermabile."}), 400
-    if doc.status == "Confermato":
-        return jsonify({"ok": True, "status": doc.status})
+    if doc.status != "Bozza":
+        return jsonify({"ok": True, "status": doc.status, "msg": "Documento già confermato."})
 
     try:
         rows = doc.righe.order_by(RigaDocumento.id).all()
         if not rows:
             return jsonify({"ok": False, "error": "Nessuna riga nel documento."}), 400
 
-        # Aggiornamento giacenze + generazione movimenti
+        # --- LOGICA AGGIORNATA: ASSEGNA NUMERO E DATA AL MOMENTO DELLA CONFERMA ---
+        today = datetime.utcnow().date()
+        doc.data = today
+        doc.anno = today.year
+        doc.numero = next_doc_number(doc.tipo, doc.anno)
+        # --- FINE LOGICA AGGIORNATA ---
+
+        # Aggiornamento giacenze e generazione movimenti
         for r in rows:
             q = D(str(getattr(r, "quantita", 0) or 0))
             if q <= 0:
                 continue
+            
             if doc.tipo == "DDT_IN":
-                # Carico a magazzino
                 update_giacenza(r.articolo_id, doc.magazzino_id, q)
                 mv = Movimento(
                     data=doc.data,
@@ -135,14 +111,13 @@ def api_confirm_document(id: int):
                     documento_id=doc.id,
                 )
             elif doc.tipo == "DDT_OUT":
-                # Scarico da magazzino con controllo stock
                 if get_giacenza(r.articolo_id, doc.magazzino_id) < q:
-                    raise ValueError("Giacenza insufficiente per lo scarico.")
+                    raise ValueError(f"Giacenza insufficiente per l'articolo {r.articolo.codice_interno if r.articolo else 'N/A'}.")
                 update_giacenza(r.articolo_id, doc.magazzino_id, -q)
                 mv = Movimento(
                     data=doc.data,
                     articolo_id=r.articolo_id,
-                    quantita=-q,
+                    quantita=q, # La quantità nei movimenti è sempre positiva
                     tipo="scarico",
                     magazzino_partenza_id=doc.magazzino_id,
                     documento_id=doc.id,
@@ -150,50 +125,6 @@ def api_confirm_document(id: int):
             else:
                 raise ValueError("Tipo documento non gestito.")
             db.session.add(mv)
-
-        doc.status = "Confermato"
-        db.session.commit()
-        return jsonify({"ok": True, "status": doc.status})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-    def _as_D(x):
-        try:
-            return D(str(x))
-        except Exception:
-            return D("0")
-
-    try:
-        try:
-            rows = doc.righe.order_by(RigaDocumento.id).all()
-        except AttributeError:
-            rows = list(getattr(doc, "righe", []) or [])
-
-        if doc.tipo == "DDT_IN":
-            for r in rows:
-                q = _as_D(getattr(r, "quantita", 0))
-                mv = Movimento(
-                    data=doc.data,
-                    articolo_id=r.articolo_id,
-                    quantita=q,
-                    tipo="carico",
-                    magazzino_arrivo_id=doc.magazzino_id,
-                    documento_id=doc.id,
-                )
-                db.session.add(mv)
-        elif doc.tipo == "DDT_OUT":
-            for r in rows:
-                q = _as_D(getattr(r, "quantita", 0))
-                mv = Movimento(
-                    data=doc.data,
-                    articolo_id=r.articolo_id,
-                    quantita=-q,
-                    tipo="scarico",
-                    magazzino_partenza_id=doc.magazzino_id,
-                    documento_id=doc.id,
-                )
-                db.session.add(mv)
 
         doc.status = "Confermato"
         db.session.commit()
@@ -215,39 +146,19 @@ def api_void_document(id: int):
         reason = (request.json.get("reason") or "").strip()
 
     try:
-        try:
-            rows = doc.righe.all()
-        except AttributeError:
-            rows = list(getattr(doc, "righe", []) or [])
-        for r in rows:
+        # Elimina le righe associate
+        for r in doc.righe:
             db.session.delete(r)
-
-        try:
-            allegati = list(getattr(doc, "allegati", []) or [])
-            for a in allegati:
-                db.session.delete(a)
-        except Exception:
-            pass
-
-        try:
-            movs = list(Movimento.query.filter_by(documento_id=doc.id).all())
-            for m in movs:
-                db.session.delete(m)
-        except Exception:
-            pass
-
-        doc.status = "Annullato"
-        default_msg = "documento eliminato volontariamente"
-        msg = reason or default_msg
-        try:
-            existing = getattr(doc, "note", None) or ""
-            stamp = datetime.utcnow().isoformat(timespec="seconds")
-            setattr(doc, "note", (existing + f" [VOID {stamp}] {msg}").strip())
-        except Exception:
-            pass
-
+        
+        # Elimina gli allegati associati
+        for a in doc.allegati:
+            db.session.delete(a)
+        
+        # Elimina il documento stesso
+        db.session.delete(doc)
+        
         db.session.commit()
-        return jsonify({"ok": True, "status": doc.status, "msg": msg})
+        return jsonify({"ok": True, "status": "Eliminato", "msg": "Bozza eliminata definitivamente."})
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -263,59 +174,43 @@ def api_reverse_document(id: int):
         return jsonify({"ok": False, "error": "Solo documenti Confermati possono essere stornati."}), 400
 
     try:
-        try:
-            rows = doc.righe.order_by(RigaDocumento.id).all()
-        except AttributeError:
-            rows = list(getattr(doc, "righe", []) or [])
-            rows.sort(key=lambda x: x.id or 0)
+        rows = doc.righe.order_by(RigaDocumento.id).all()
 
-        # Genera movimenti di storno + aggiorna giacenze
+        # Genera movimenti di storno e aggiorna giacenze
         for r in rows:
             q = D(str(getattr(r, "quantita", 0) or 0))
             if q <= 0:
                 continue
+            
             if doc.tipo == "DDT_IN":
-                # Storno di un carico: scarico giacenza
                 if get_giacenza(r.articolo_id, doc.magazzino_id) < q:
-                    raise ValueError("Giacenza insufficiente per lo storno.")
+                    raise ValueError(f"Giacenza insufficiente per stornare l'articolo {r.articolo.codice_interno if r.articolo else 'N/A'}.")
                 update_giacenza(r.articolo_id, doc.magazzino_id, -q)
-                rev = Movimento(
-                    data=doc.data,
-                    articolo_id=r.articolo_id,
-                    quantita=-q,
-                    tipo="scarico",
-                    magazzino_partenza_id=doc.magazzino_id,
-                    documento_id=doc.id,
-                )
-            else:  # DDT_OUT
-                # Storno di uno scarico: ripristino giacenza
+                rev_tipo = "scarico"
+            elif doc.tipo == "DDT_OUT":
                 update_giacenza(r.articolo_id, doc.magazzino_id, q)
-                rev = Movimento(
-                    data=doc.data,
-                    articolo_id=r.articolo_id,
-                    quantita=q,
-                    tipo="carico",
-                    magazzino_arrivo_id=doc.magazzino_id,
-                    documento_id=doc.id,
-                )
+                rev_tipo = "carico"
+            else:
+                continue
+
+            rev = Movimento(
+                data=datetime.utcnow(),
+                articolo_id=r.articolo_id,
+                quantita=q,
+                tipo=f"storno_{rev_tipo}",
+                magazzino_partenza_id=doc.magazzino_id if rev_tipo == "scarico" else None,
+                magazzino_arrivo_id=doc.magazzino_id if rev_tipo == "carico" else None,
+                documento_id=doc.id,
+            )
             db.session.add(rev)
 
         doc.status = "Stornato"
-        try:
-            existing = getattr(doc, "note", None) or ""
-            stamp = datetime.utcnow().isoformat(timespec="seconds")
-            setattr(doc, "note", (existing + f" [REVERSE {stamp}] documento stornato").strip())
-        except Exception:
-            pass
-
         db.session.commit()
         return jsonify({"ok": True, "status": doc.status})
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 
-
-# --------- NEW: Update Bozza (inline edit) ---------
 def _parse_date_any(s):
     if not s:
         return None
@@ -328,17 +223,8 @@ def _parse_date_any(s):
             continue
     return None
 
-
 @docops_bp.post("/api/documents/<int:id>/update")
 def api_update_document(id: int):
-    """
-    Aggiorna un documento in Bozza: header (parziale) + righe (descrizione, quantita, prezzo, mastrino_codice).
-    Body atteso:
-    {
-      "header": { "data": "07/08/2025" | "2025-08-07", "magazzino_id": 1, "partner_nome": "..." },
-      "righe": [ { "id": 10, "descrizione": "...", "quantita": 2, "prezzo": 12.5, "mastrino_codice": "ACQ" }, ... ]
-    }
-    """
     doc = Documento.query.get_or_404(id)
     if doc.status != "Bozza":
         return jsonify({"ok": False, "error": "Solo documenti in Bozza possono essere modificati."}), 400
@@ -349,33 +235,18 @@ def api_update_document(id: int):
 
     try:
         # Header parziale
-        if "data" in header:
-            d = _parse_date_any(header.get("data"))
-            if isinstance(d, date):
-                doc.data = d
+        if "riferimento_fornitore" in header:
+            doc.riferimento_fornitore = str(header.get("riferimento_fornitore", "")).strip()
         if "magazzino_id" in header:
             try:
                 doc.magazzino_id = int(header.get("magazzino_id"))
-            except Exception:
+            except (ValueError, TypeError):
                 pass
         if "partner_id" in header:
             try:
                 doc.partner_id = int(header.get("partner_id"))
-            except Exception:
+            except (ValueError, TypeError):
                 pass
-        if "commessa_id" in header:
-            try:
-                doc.commessa_id = int(header.get("commessa_id"))
-            except Exception:
-                pass
-        # Campo partner_nome opzionale
-        for k in ("partner_nome", "fornitore", "cliente", "partner"):
-            if k in header:
-                try:
-                    setattr(doc, "partner_nome", str(header.get(k)))
-                    break
-                except Exception:
-                    pass
 
         # Righe
         for rj in rows_in:
@@ -388,93 +259,21 @@ def api_update_document(id: int):
 
             if "descrizione" in rj:
                 r.descrizione = (rj.get("descrizione") or "").strip()
-            if "um" in rj:
-                r.um = (rj.get("um") or "").strip() or r.um
             if "quantita" in rj:
                 try:
-                    r.quantita = _to_decimal_nls(rj.get("quantita")) or D('0')
+                    r.quantita = D(str(rj.get("quantita") or 0))
                 except Exception:
                     pass
             if "prezzo" in rj:
                 try:
-                    r.prezzo = _to_decimal_nls(rj.get("prezzo")) or D('0')
+                    r.prezzo = D(str(rj.get("prezzo") or 0))
                 except Exception:
                     pass
             if "mastrino_codice" in rj:
                 r.mastrino_codice = (rj.get("mastrino_codice") or "").strip() or None
 
         db.session.commit()
-
-        # Ritorna lo stato aggiornato
         return api_document_json(id)
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@docops_bp.post("/api/documents/<int:id>/convert-to-out")
-def api_convert_to_out(id: int):
-    """Crea un nuovo DDT_OUT copiando i dati dal DDT_IN di origine.
-    Regole:
-    - Copia tutte le righe (articolo, descrizione, quantita, prezzo, mastrino_codice)
-    - Anno e data come il documento sorgente
-    - Magazzino uguale al sorgente
-    - partner_id: se il DDT IN ha commessa valorizzata, usa quella; altrimenti usa il partner originale
-    - Stato iniziale: Bozza
-    """
-    doc = Documento.query.get_or_404(id)
-    if doc.tipo != "DDT_IN":
-        return jsonify({"ok": False, "error": "Solo i DDT IN possono essere trasformati."}), 400
-
-    try:
-        anno = getattr(doc, "anno", None) or date.today().year
-        data = getattr(doc, "data", None) or date.today()
-
-        # partner: commessa se presente, altrimenti fornitore originale
-        partner_id = getattr(doc, "commessa_id", None) or getattr(doc, "partner_id", None)
-        magazzino_id = getattr(doc, "magazzino_id", None)
-
-        new_doc = Documento(
-            tipo="DDT_OUT",
-            numero=next_doc_number("DDT_OUT", anno),
-            anno=anno,
-            data=data,
-            status="Bozza",
-            partner_id=partner_id,
-            magazzino_id=magazzino_id,
-        )
-
-        # mantieni eventuale commessa per tracciabilità
-        try:
-            new_doc.commessa_id = getattr(doc, "commessa_id", None)
-        except Exception:
-            pass
-
-        db.session.add(new_doc)
-        db.session.flush()  # per avere new_doc.id
-
-        # copia righe
-        try:
-            rows = doc.righe.order_by(RigaDocumento.id).all()
-        except Exception:
-            rows = list(getattr(doc, "righe", []) or [])
-            rows.sort(key=lambda x: x.id or 0)
-
-        for r in rows:
-            nr = RigaDocumento(
-                documento_id=new_doc.id,
-                articolo_id=getattr(r, "articolo_id", None),
-                descrizione=getattr(r, "descrizione", None),
-                quantita=getattr(r, "quantita", 0),
-                prezzo=getattr(r, "prezzo", 0),
-                mastrino_codice=getattr(r, "mastrino_codice", None),
-            )
-            db.session.add(nr)
-
-        db.session.commit()
-        # risposta
-        from flask import url_for
-        return jsonify({"ok": True, "id": new_doc.id, "url": url_for("documents.document_detail", id=new_doc.id) + "?edit=1"})
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
