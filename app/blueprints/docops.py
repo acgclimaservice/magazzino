@@ -51,7 +51,7 @@ def api_document_json(id: int):
         allegati.append({
             "id": a.id,
             "filename": a.filename,
-            "url": url_for('files.download_file', id=a.id)
+            "url": url_for('files.download_attachment', id=a.id) # FIX: Corretto endpoint
         })
 
     doc_out = {
