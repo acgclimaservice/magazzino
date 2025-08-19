@@ -65,7 +65,7 @@ def export_document_pdf(doc: Documento) -> bytes:
     righe_table = Table(table_data, colWidths=col_widths)
     righe_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitespoke),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), # FIX: Corretto da whitespoke a whitesmoke
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('ALIGN', (2,1), (-1,-1), 'RIGHT'), # Allinea a destra qta, prezzo, totale
         ('ALIGN', (4,1), (4,-1), 'LEFT'), # Allinea a sinistra mastrino
