@@ -12,9 +12,14 @@ docops_bp = Blueprint("docops", __name__)
 
 
 def _safe_float(val, default=0.0):
+    """
+    Converte in modo sicuro un valore (potenzialmente Decimal o None) in un float.
+    """
+    if val is None:
+        return float(default)
     try:
         return float(val)
-    except Exception:
+    except (ValueError, TypeError):
         return float(default)
 
 
@@ -23,7 +28,7 @@ def _row_to_front_dict(r: RigaDocumento):
     codice_fornitore = None
     # Modo più sicuro di accedere alla relazione
     try:
-        if r.articolo:
+        if r and r.articolo:
             codice_interno = r.articolo.codice_interno
             codice_fornitore = r.articolo.codice_fornitore
     except AttributeError:
