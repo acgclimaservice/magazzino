@@ -23,7 +23,7 @@ def q_dec(value: str, scale='0.001', allow_zero=False, field="Quantità") -> Dec
     except InvalidOperation:
         raise ValueError(f"{field} non valida.")
     if (not allow_zero and q <= 0) or (allow_zero and q < 0):
-        raise ValueError(f"{field} deve essere {'≥ 0' if allow_zero else '> 0'}.")
+        raise ValueError(f"{field} deve essere {'> 0' if not allow_zero else '>= 0'}.")
     return q.quantize(Decimal(scale))
 
 def money_dec(value: str) -> Decimal:
@@ -66,10 +66,10 @@ def update_giacenza(articolo_id, magazzino_id, qty, session=None):
 def next_doc_number(doc_type, year=None) -> int:
     year = year or date.today().year
     last = (Documento.query
-            .filter_by(tipo=doc_type, anno=year)
+            .filter(Documento.tipo == doc_type, Documento.anno == year, Documento.numero != None)
             .order_by(Documento.numero.desc())
             .first())
-    return (last.numero + 1) if last else 1
+    return (last.numero + 1) if last and last.numero is not None else 1
 
 # --- Normalizzazione UM ---
 
