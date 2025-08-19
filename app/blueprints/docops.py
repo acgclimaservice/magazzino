@@ -13,9 +13,6 @@ docops_bp = Blueprint("docops", __name__)
 
 
 def _safe_float(val, default=0.0):
-    """
-    Converte in modo sicuro un valore (potenzialmente Decimal o None) in un float.
-    """
     if val is None:
         return float(default)
     try:
@@ -27,13 +24,12 @@ def _safe_float(val, default=0.0):
 def _row_to_front_dict(r: RigaDocumento):
     codice_interno = None
     codice_fornitore = None
-    # Modo più sicuro di accedere alla relazione
     try:
         if r and r.articolo:
             codice_interno = r.articolo.codice_interno
             codice_fornitore = r.articolo.codice_fornitore
     except AttributeError:
-        pass  # Le relazioni potrebbero non essere caricate o l'articolo essere nullo
+        pass
 
     return {
         "id": r.id,
@@ -50,7 +46,6 @@ def _row_to_front_dict(r: RigaDocumento):
 @docops_bp.get("/api/documents/<int:id>/json")
 def api_document_json(id: int):
     try:
-        # Carica il documento con tutte le relazioni necessarie per evitare errori
         doc = Documento.query.options(
             joinedload(Documento.partner),
             joinedload(Documento.magazzino),
@@ -58,22 +53,15 @@ def api_document_json(id: int):
             joinedload(Documento.allegati)
         ).get_or_404(id)
 
-        # Accesso sicuro alle relazioni
-        partner_name = ""
-        if doc.partner:
-            partner_name = doc.partner.nome or ""
-
-        magazzino_info = ""
-        if doc.magazzino:
-            magazzino_info = f"{doc.magazzino.codice or ''} - {doc.magazzino.nome or ''}"
-
+        partner_name = doc.partner.nome if doc.partner else ""
+        magazzino_info = f"{doc.magazzino.codice} - {doc.magazzino.nome}" if doc.magazzino else ""
         rows = doc.righe or []
         righe = [_row_to_front_dict(r) for r in rows]
 
         allegati = []
         if hasattr(doc, 'allegati') and doc.allegati:
             for a in doc.allegati:
-                if a and a.id: # Aggiunto controllo di sicurezza
+                if a and a.id:
                     allegati.append({
                         "id": a.id,
                         "filename": a.filename,
@@ -99,10 +87,9 @@ def api_document_json(id: int):
         return jsonify({"ok": True, "doc": doc_out})
 
     except Exception as e:
-        # Log dell'errore per un debug più facile
         print(f"ERRORE GRAVE in api_document_json per doc ID {id}:")
         traceback.print_exc()
-        return jsonify({"ok": False, "error": "Errore interno del server durante il recupero dei dati del documento."}), 500
+        return jsonify({"ok": False, "error": "Errore interno del server."}), 500
 
 
 @docops_bp.post("/api/documents/<int:id>/confirm")
@@ -116,13 +103,11 @@ def api_confirm_document(id: int):
         if not rows:
             return jsonify({"ok": False, "error": "Nessuna riga nel documento."}), 400
 
-        # Assegna numero e data al momento della conferma
         today = datetime.utcnow().date()
         doc.data = today
         doc.anno = today.year
         doc.numero = next_doc_number(doc.tipo, doc.anno)
 
-        # Aggiornamento giacenze e generazione movimenti
         for r in rows:
             q = D(str(getattr(r, "quantita", 0) or 0))
             if q <= 0:
@@ -145,7 +130,7 @@ def api_confirm_document(id: int):
                 mv = Movimento(
                     data=doc.data,
                     articolo_id=r.articolo_id,
-                    quantita=q, # La quantità nei movimenti è sempre positiva
+                    quantita=q,
                     tipo="scarico",
                     magazzino_partenza_id=doc.magazzino_id,
                     documento_id=doc.id,
