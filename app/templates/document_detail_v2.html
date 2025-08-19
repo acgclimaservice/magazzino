@@ -106,7 +106,8 @@
     } else if (docData.status === 'Confermato') {
        actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="/files/export-document/' + docId + '.pdf">Esporta PDF</a>';
     }
-    actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for(\'documents.documents_in\') }}">Torna all\'archivio</a>';
+    // FIX: Rimosso backslash da url_for
+    actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for("documents.documents_in") }}">Torna all\'archivio</a>';
     bindActionEvents();
   }
 
