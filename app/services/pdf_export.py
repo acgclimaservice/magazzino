@@ -1,49 +1,77 @@
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.lib.units import inch
 
-import io, os
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from PyPDF2 import PdfReader, PdfWriter
+from ..models import Documento, RigaDocumento
 
-def build_document_pdf(document, lines, attachment_path:str|None=None) -> bytes:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
-    W, H = A4
+def export_document_pdf(doc: Documento) -> bytes:
+    buffer = BytesIO()
+    doc_template = SimpleDocTemplate(buffer, pagesize=letter)
+    
+    styles = getSampleStyleSheet()
+    story = []
 
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(40, H-40, f"Documento {getattr(document,'type','')} n. {getattr(document,'number','')}")
-    c.setFont("Helvetica", 10)
-    c.drawString(40, H-60, f"Data: {getattr(document,'date','')}")
+    # Titolo
+    title_str = f"Documento {doc.tipo} N. {doc.numero}/{doc.anno}" if doc.numero else f"Documento {doc.tipo} (Bozza)"
+    story.append(Paragraph(title_str, styles['h1']))
+    story.append(Spacer(1, 0.2*inch))
 
-    partner = getattr(document, "partner", None)
-    wh = getattr(document, "warehouse", None) or getattr(document, "dest_warehouse", None)
-    if partner:
-        c.drawString(40, H-80, f"Controparte: {getattr(partner,'code','')} - {getattr(partner,'name','')}")
-    if wh:
-        c.drawString(40, H-95, f"Magazzino: {getattr(wh,'code','')} - {getattr(wh,'name','')}")
+    # Dettagli intestazione
+    partner_type = "Cliente" if doc.tipo == "DDT_OUT" else "Fornitore"
+    header_data = [
+        ["Data Documento:", doc.data.strftime('%d/%m/%Y') if doc.data else "N/A"],
+        [f"{partner_type}:", doc.partner.nome if doc.partner else "N/A"],
+        ["Magazzino:", f"{doc.magazzino.codice} - {doc.magazzino.nome}" if doc.magazzino else "N/A"],
+    ]
+    header_table = Table(header_data, colWidths=[1.5*inch, 4*inch])
+    header_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (0,-1), 'RIGHT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 0.3*inch))
 
-    y = H - 120
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(40, y, "Codice"); c.drawString(130, y, "Descrizione")
-    c.drawString(360, y, "Q.tà"); c.drawString(410, y, "Prezzo")
-    c.drawString(470, y, "Mastrino"); c.line(40, y-2, 550, y-2); y -= 14
-    c.setFont("Helvetica", 9)
-    for ln in lines:
-        if y < 50: c.showPage(); y = H - 50
-        code = getattr(ln, "sku", getattr(ln, "article_code", ""))
-        desc = getattr(ln, "description", ""); qty = getattr(ln, "qty", getattr(ln, "quantity", 0))
-        price = getattr(ln, "unit_price", getattr(ln, "price", 0))
-        mastr = getattr(ln, "mastrino", getattr(ln, "mastrino_code", ""))
-        c.drawString(40, y, str(code)); c.drawString(130, y, str(desc)[:35])
-        c.drawRightString(400, y, f"{qty}"); c.drawRightString(460, y, f"{price}")
-        c.drawString(470, y, str(mastr)); y -= 12
-    c.showPage(); c.save()
+    # Tabella righe
+    rows = doc.righe.order_by(RigaDocumento.id).all()
+    
+    # Intestazioni tabella - Aggiunto Mastrino
+    table_data = [
+        ["Codice", "Descrizione", "Q.tà", "Prezzo", "Mastrino", "Totale"]
+    ]
+    
+    # Dati righe - Aggiunto Mastrino
+    for r in rows:
+        table_data.append([
+            r.articolo.codice_interno if r.articolo else '',
+            Paragraph(r.descrizione or '', styles['Normal']),
+            f"{r.quantita:.2f}",
+            f"{r.prezzo:.2f}",
+            r.mastrino_codice or '',
+            f"{(r.quantita * r.prezzo):.2f}"
+        ])
 
-    base = PdfReader(io.BytesIO(buf.getvalue()))
-    writer = PdfWriter()
-    for p in base.pages: writer.add_page(p)
-    if attachment_path and os.path.exists(attachment_path):
-        try:
-            att = PdfReader(attachment_path)
-            for p in att.pages: writer.add_page(p)
-        except Exception: pass
-    out = io.BytesIO(); writer.write(out); return out.getvalue()
+    # Creazione tabella e stile
+    col_widths = [0.8*inch, 3*inch, 0.6*inch, 0.7*inch, 1*inch, 0.8*inch]
+    righe_table = Table(table_data, colWidths=col_widths)
+    righe_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('ALIGN', (2,1), (-1,-1), 'RIGHT'), # Allinea a destra qta, prezzo, totale
+        ('ALIGN', (4,1), (4,-1), 'LEFT'), # Allinea a sinistra mastrino
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+    story.append(righe_table)
+
+    doc_template.build(story)
+    
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
