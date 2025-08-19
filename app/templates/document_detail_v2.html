@@ -62,6 +62,7 @@
 (function(){
   var docId = {{ doc.id }};
   var docData = null;
+  var documentsUrl = "{{ url_for('documents.documents_in') }}"; // FIX: Memorizza l'URL in una variabile JS
 
   var actionsBar = document.getElementById('actions-bar');
   var docTitle = document.getElementById('doc-title');
@@ -106,7 +107,7 @@
     } else if (docData.status === 'Confermato') {
        actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="/files/export-document/' + docId + '.pdf">Esporta PDF</a>';
     }
-    actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for("documents.documents_in") }}">Torna all\'archivio</a>';
+    actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="' + documentsUrl + '">Torna all\'archivio</a>';
     bindActionEvents();
   }
 
@@ -206,7 +207,7 @@
         if (confirm('Sei sicuro di voler eliminare questa bozza? L\'operazione è irreversibile.')) {
           apiCall('/api/documents/' + docId + '/delete-draft', { method: 'POST' })
             .then(function() {
-              window.location.href = "{{ url_for('documents.documents_in') }}";
+              window.location.href = documentsUrl;
             });
         }
       });
