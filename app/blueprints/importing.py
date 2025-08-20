@@ -32,7 +32,6 @@ def _to_decimal(x):
             return Decimal(str(x))
         except Exception:
             return None
-    # Nota: il carattere 'â‚¬' indica un problema di encoding da correggere alla fonte se possibile
     s = str(x).strip().replace('â‚¬','').replace('\\xa0','').replace(' ', '').replace(',', '.')
     m = re.search(r'[-+]?\\d+(?:\\.\\d+)?', s)
     if not m:
@@ -418,7 +417,6 @@ def api_inventory_search():
         q = (request.args.get("q") or "").strip()
         limit = min(max(request.args.get("limit", 25, type=int), 1), 100)
         
-        # Se mag_id non è fornito, lo recuperiamo per poter mostrare la giacenza corretta
         if not mag_id:
              default_mag = Magazzino.query.order_by(Magazzino.id).first()
              if default_mag:
@@ -442,10 +440,8 @@ def api_inventory_search():
 
         rows = qry.order_by(Articolo.descrizione.asc()).limit(limit).all()
         out = []
-        # Loop aggiornato per gestire il nuovo formato della query (Articolo, quantita)
         for a, g_quantita in rows:
             try:
-                # Se la giacenza è None (nessuna corrispondenza nell'outerjoin), la quantità è 0
                 qty = float(g_quantita) if g_quantita is not None else 0.0
             except Exception:
                 qty = 0.0
@@ -456,7 +452,6 @@ def api_inventory_search():
                 "codice_fornitore": a.codice_fornitore,
                 "descrizione": a.descrizione,
                 "giacenza": qty,
-                # Aggiungo il costo per pre-compilare il campo prezzo nell'interfaccia
                 "last_cost": float(a.last_cost) if a.last_cost is not None else 0.0
             })
         return jsonify(out)
