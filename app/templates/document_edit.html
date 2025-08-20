@@ -77,7 +77,7 @@ function showError(message) {
     }
 }
 
-// Funzione di ricerca articoli (corretta)
+// Funzione di ricerca articoli (CORRETTA)
 async function searchAndShowArticles(query) {
     const resultsContainer = document.getElementById('searchResults');
     const magId = '{{ doc.magazzino_id }}'; // Prende il magazzino dal documento
@@ -97,8 +97,15 @@ async function searchAndShowArticles(query) {
         
         const data = await resp.json();
 
-        if (!Array.isArray(data) && data.ok === false) {
+        // CONTROLLO ERRORI CORRETTO
+        // Se la risposta ha un campo 'ok' impostato a false, è un errore
+        if (data && typeof data === 'object' && data.ok === false) {
             throw new Error(data.error || 'Errore durante la ricerca.');
+        }
+
+        // Se non è un array, probabilmente c'è un problema
+        if (!Array.isArray(data)) {
+            throw new Error('Formato risposta non valido dal server');
         }
         
         resultsContainer.innerHTML = '';
@@ -113,8 +120,8 @@ async function searchAndShowArticles(query) {
             item.href = '#';
             item.className = 'block p-2 border-b hover:bg-gray-100 text-sm';
             item.innerHTML = `
-                <div class="font-semibold">${art.codice_interno || art.codice_fornitore} - ${art.descrizione}</div>
-                <div class="text-xs text-gray-500">Giacenza: ${art.giacenza} | Ultimo costo: ${art.last_cost.toFixed(2)} €</div>
+                <div class="font-semibold">${art.codice_interno || art.codice_fornitore || 'N/A'} - ${art.descrizione || 'N/A'}</div>
+                <div class="text-xs text-gray-500">Giacenza: ${art.giacenza || 0} | Ultimo costo: ${(art.last_cost || 0).toFixed(2)} €</div>
             `;
             
             item.addEventListener('click', (e) => {
@@ -133,7 +140,7 @@ async function searchAndShowArticles(query) {
     }
 }
 
-// Funzione per aggiungere una riga alla tabella
+// Funzione per aggiungere una riga alla tabella (CORRETTA)
 function addRowToTable(art) {
     const tableBody = document.getElementById('rowsTableBody');
     const newRow = document.createElement('tr');
@@ -142,8 +149,8 @@ function addRowToTable(art) {
     const quantita = '1,00';
 
     newRow.innerHTML = `
-        <td class="p-2"><input type="hidden" name="rows[${rowIndex}][articolo_id]" value="${art.articolo_id}">${art.codice_interno || art.codice_fornitore}</td>
-        <td class="p-2"><input class="border rounded p-1 w-full" name="rows[${rowIndex}][descrizione]" value="${art.descrizione}"></td>
+        <td class="p-2"><input type="hidden" name="rows[${rowIndex}][articolo_id]" value="${art.id}">${art.codice_interno || art.codice_fornitore || 'N/A'}</td>
+        <td class="p-2"><input class="border rounded p-1 w-full" name="rows[${rowIndex}][descrizione]" value="${art.descrizione || ''}"></td>
         <td class="p-2"><input class="border rounded p-1 w-24" name="rows[${rowIndex}][quantita]" value="${quantita}" type="text"></td>
         <td class="p-2"><input class="border rounded p-1 w-24" name="rows[${rowIndex}][prezzo]" value="${prezzo}" type="text"></td>
         <td class="p-2"><button type="button" onclick="removeRow(this)" class="text-red-500 hover:text-red-700">Rimuovi</button></td>
@@ -175,15 +182,14 @@ async function confirmDocument() {
     }
 }
 
-
 // Event listener per l'input di ricerca
 document.getElementById('articleSearchInput').addEventListener('input', (e) => {
     // Semplice debounce per non fare una chiamata ad ogni tasto premuto
-    clearTimeout(this.searchTimeout);
-    this.searchTimeout = setTimeout(() => {
+    clearTimeout(window.searchTimeout);
+    window.searchTimeout = setTimeout(() => {
         searchAndShowArticles(e.target.value);
     }, 300);
 });
 
 </script>
-{% endblock %}
+{% endblock %>
