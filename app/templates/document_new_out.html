@@ -1,14 +1,36 @@
-
 {% extends "_base.html" %}
+{% block title %}Nuovo DDT OUT (Manuale){% endblock %}
 {% block content %}
-<h1>Nuovo DDT OUT</h1>
-<form method="post" action="{{ url_for('documents.new_out_save') }}">
-  <label>Data</label><input name="date" placeholder="gg/mm/aaaa" required>
-  <label>Numero</label><input name="number" required>
-  <label>Cliente</label>
-  <select name="partner_id">{% for p in partners %}<option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>{% endfor %}</select>
-  <label>Magazzino Origine</label>
-  <select name="warehouse_id">{% for w in warehouses %}<option value="{{ w.id }}">{{ w.code }} - {{ w.name }}</option>{% endfor %}</select>
-  <button class="btn">Crea</button>
-</form>
+<div class="bg-white p-4 rounded-xl shadow max-w-3xl">
+  <h1 class="text-lg font-semibold mb-3">Nuovo DDT OUT (Manuale)</h1>
+  <p class="text-sm text-gray-600 mb-4">Crea una nuova bozza di DDT di uscita. Potrai aggiungere gli articoli nella schermata successiva.</p>
+  
+  <form method="post" action="{{ url_for('documents.new_out_save') }}" class="grid md:grid-cols-2 gap-4">
+    
+    <div class="md:col-span-2">
+      <label class="block text-xs text-gray-500">Cliente</label>
+      <input name="cliente" class="border rounded p-2 w-full" placeholder="Ragione sociale" required>
+    </div>
+
+    <div>
+      <label class="block text-xs text-gray-500">Magazzino di Origine</label>
+      <select name="magazzino_id" class="border rounded p-2 w-full">
+        {% for m in magazzini %}<option value="{{ m.id }}">{{ m.codice }} — {{ m.nome }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-xs text-gray-500">Commessa (opzionale)</label>
+      <select name="commessa_id" class="border rounded p-2 w-full">
+        <option value="">— Nessuna —</option>
+        {% for c in clienti %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="md:col-span-2 mt-2">
+      <button type="submit" class="px-3 py-2 rounded bg-indigo-600 text-white">Crea Bozza e Aggiungi Righe</button>
+      <a href="{{ url_for('documents.documents_out') }}" class="ml-2 px-3 py-2 rounded border">Annulla</a>
+    </div>
+  </form>
+</div>
 {% endblock %}

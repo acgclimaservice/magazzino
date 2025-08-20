@@ -82,3 +82,28 @@ def api_mastrini_redirect():
     # Mantieni i query parameters (tipo=RICAVO)
     args = '?' + request.query_string.decode() if request.query_string else ''
     return redirect(url_for('lookups.api_mastrini') + args)
+
+@compatibility_bp.route('/api/clienti')
+def api_clienti_redirect():
+    return redirect(url_for('lookups.api_clienti'))
+
+@compatibility_bp.route('/api/documents/<int:id>/json')
+def api_document_json_redirect(id):
+    return redirect(url_for('docops.api_document_json', id=id))
+
+@compatibility_bp.route('/api/documents/<int:id>/delete-draft', methods=['POST'])
+def api_delete_draft_redirect(id):
+    return redirect(url_for('docops.api_delete_draft', id=id), code=307)
+
+@compatibility_bp.route('/api/documents/<int:id>/confirm', methods=['POST'])
+def api_confirm_document_redirect(id):
+    return redirect(url_for('docops.api_confirm_document', id=id), code=307)
+
+@compatibility_bp.route('/api/inventory/search')
+def api_inventory_search_redirect():
+    args = '?' + request.query_string.decode() if request.query_string else ''
+    return redirect(url_for('importing.api_inventory_search') + args)
+
+@compatibility_bp.route('/api/documents/<int:id>/add-line', methods=['POST'])
+def api_add_line_redirect(id):
+    return redirect(url_for('docops.api_add_line', id=id), code=307)

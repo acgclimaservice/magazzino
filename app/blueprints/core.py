@@ -1,5 +1,5 @@
 from datetime import datetime, date, time, timedelta
-from flask import Blueprint, render_template, redirect, url_for
+from flask import Blueprint, render_template, redirect, url_for, flash
 from sqlalchemy import func, and_
 from ..extensions import db
 from ..models import Articolo, Giacenza, Documento, Movimento
@@ -43,3 +43,24 @@ def dashboard():
                            movimenti_oggi=movimenti_oggi,
                            documenti_in_bozza=documenti_in_bozza,
                            articoli_sotto_scorta=sotto_scorta)
+
+@core_bp.post("/reset-all-data")
+def reset_all_data():
+    """SOLO PER TEST - Cancella tutti i dati"""
+    try:
+        from ..models import Documento, RigaDocumento, Articolo, Giacenza, Movimento
+        
+        # Cancella in ordine per evitare errori FK
+        db.session.query(RigaDocumento).delete()
+        db.session.query(Movimento).delete() 
+        db.session.query(Documento).delete()
+        db.session.query(Giacenza).delete()
+        db.session.query(Articolo).delete()
+        
+        db.session.commit()
+        flash("Tutti i dati cancellati!", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Errore reset: {e}", "error")
+    
+    return redirect(url_for('core.dashboard'))

@@ -1,0 +1,35 @@
+{% extends "_base.html" %}
+{% block title %}Duplica DDT IN → DDT OUT{% endblock %}
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow max-w-3xl">
+  <h1 class="text-lg font-semibold mb-3">Duplica DDT IN → DDT OUT</h1>
+  <p class="text-sm text-gray-600 mb-4">
+    Duplicando: <strong>DDT IN #{{ doc.numero or doc.id }}</strong> 
+    ({{ doc.partner.nome if doc.partner else 'N/A' }}, {{ doc.righe.count() }} righe)
+  </p>
+  
+  <form method="post" action="{{ url_for('documents.duplicate_to_out_save', id=doc.id) }}" class="grid md:grid-cols-2 gap-4">
+    
+    <div class="md:col-span-2">
+      <label class="block text-xs text-gray-500">Cliente (DDT OUT)</label>
+      <input name="cliente" class="border rounded p-2 w-full" placeholder="Ragione sociale" required>
+    </div>
+
+    <div>
+      <label class="block text-xs text-gray-500">Magazzino di Origine</label>
+      <select name="magazzino_id" class="border rounded p-2 w-full">
+        {% for m in magazzini %}
+        <option value="{{ m.id }}" {% if m.id == doc.magazzino_id %}selected{% endif %}>
+          {{ m.codice }} — {{ m.nome }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="md:col-span-2 mt-2">
+      <button type="submit" class="px-3 py-2 rounded bg-indigo-600 text-white">Crea DDT OUT</button>
+      <a href="{{ url_for('documents.document_detail', id=doc.id) }}" class="ml-2 px-3 py-2 rounded border">Annulla</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

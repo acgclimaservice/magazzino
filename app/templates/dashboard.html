@@ -1,4 +1,14 @@
 {% extends "_base.html" %}
+<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
+  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
+  </form>
+</div>
+<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
+  <h3 class="font-semibold text-red-800">⚠️ RESET TEST</h3>
+  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati?')">
+    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">CANCEL PROVVISORIO</button>
+  </form>
+</div>
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <div class="grid md:grid-cols-3 gap-4">
@@ -46,4 +56,23 @@
     </table>
   </div>
 </div>
+<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
+  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
+  </form>
+</div>
+<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
+  <h3 class="font-semibold text-red-800">⚠️ RESET TEST</h3>
+  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati?')">
+    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">CANCEL PROVVISORIO</button>
+  </form>
+</div>
 {% endblock %}
+
+<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
+  <form method="post" action="{{ url_for('core.reset_all_data') }}" 
+        onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
+    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">
+<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
+  <form method="post" action="{{ url_for('core.reset_all_data') }}" 
+        onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
+    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">
