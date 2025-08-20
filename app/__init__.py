@@ -1,4 +1,47 @@
-# app/__init__.py - SEZIONE BLUEPRINT AGGIORNATA
+import os
+from flask import Flask
+#from flask_migrate import Migrate
+from .extensions import db
+from .models import *
+
+
+def create_app():
+    """Factory pattern per creare l'app Flask"""
+    
+    # Configurazione
+    config_name = os.environ.get('FLASK_ENV', 'development')
+    
+    # Creazione app
+    app = Flask(
+        __name__,
+        template_folder='templates',
+        static_folder='static'
+    )
+    
+    # Configurazione database
+    if config_name == 'production':
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///magazzino.db'
+    else:
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///magazzino.db'
+    
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-me')
+    app.config['UPLOAD_FOLDER'] = 'app/uploads'
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+    
+    # Inizializza estensioni
+    db.init_app(app)
+    #migrate = Migrate(app, db)
+    
+    # Registra blueprint
+    register_blueprints(app)
+    
+    # Crea tabelle se non esistono
+    with app.app_context():
+        db.create_all()
+    
+    return app
+
 
 def register_blueprints(app):
     """Registra tutti i blueprints con struttura modulare"""
@@ -12,151 +55,89 @@ def register_blueprints(app):
     app.register_blueprint(core_bp)
     
     # === NUOVI BLUEPRINT MODULARI ===
-    
     # API Blueprints (nuovi)
     try:
         from .blueprints.api.import_api import import_api_bp
-        app.register_blueprint(import_api_bp)
-        app.logger.info("✅ Import API blueprint registrato")
+        app.register_blueprint(import_api_bp, url_prefix='/api')
+        print("✅ Registrato import_api_bp")
     except ImportError as e:
-        app.logger.warning(f"❌ Import API blueprint non trovato: {e}")
+        print(f"⚠️ Errore import import_api_bp: {e}")
     
-    # Web Blueprints (nuovi)  
+    # Web Blueprints (nuovi)
     try:
         from .blueprints.web.import_web import import_web_bp
-        app.register_blueprint(import_web_bp)
-        app.logger.info("✅ Import Web blueprint registrato")
+        app.register_blueprint(import_web_bp, url_prefix='/import')
+        print("✅ Registrato import_web_bp")
     except ImportError as e:
-        app.logger.warning(f"❌ Import Web blueprint non trovato: {e}")
+        print(f"⚠️ Errore import import_web_bp: {e}")
     
-    # === LEGACY BLUEPRINTS (mantenuti per compatibilità) ===
-    
-    # NOTA: importing.py DISABILITATO durante migrazione
-    # from .blueprints.importing import importing_bp
-    # app.register_blueprint(importing_bp)
-    
-    from .blueprints.articles import articles_bp
-    from .blueprints.movements import movements_bp
-    from .blueprints.documents import documents_bp
-    from .blueprints.inventory import inventory_bp
-    from .blueprints.settings import settings_bp
-    from .blueprints.files import files_bp
-    from .blueprints.lookups import lookups_bp
-    from .blueprints.docops import docops_bp
-    
-    app.register_blueprint(articles_bp)
-    app.register_blueprint(movements_bp)
-    app.register_blueprint(documents_bp)
-    app.register_blueprint(inventory_bp)
-    app.register_blueprint(settings_bp)
-    app.register_blueprint(files_bp)
-    app.register_blueprint(lookups_bp)
-    app.register_blueprint(docops_bp)
-    
-    # === OPTIONAL BLUEPRINTS ===
+    # Compatibility Redirects
     try:
-        from .blueprints.reports import reports_bp
-        app.register_blueprint(reports_bp)
-        app.logger.info("✅ Reports blueprint registrato")
-    except ImportError:
-        app.logger.info("Reports blueprint non trovato, saltato")
-
-
-def register_services(app):
-    """Registra servizi come singleton nell'app context"""
+        from .blueprints.compatibility import compatibility_bp
+        app.register_blueprint(compatibility_bp)
+        print("✅ Registrato compatibility_bp")
+    except ImportError as e:
+        print(f"⚠️ Errore import compatibility_bp: {e}")
     
-    # Inizializza extension dict se non esiste
-    if not hasattr(app, 'extensions'):
-        app.extensions = {}
+    # === BLUEPRINT ESISTENTI ===
+    try:
+        from .blueprints.documents import documents_bp
+        app.register_blueprint(documents_bp, url_prefix='/documents')
+    except ImportError as e:
+        print(f"⚠️ Errore import documents_bp: {e}")
     
     try:
-        # Import services
-        from .services.pdf_service import PDFService
-        from .services.parsing_service import ParsingService  
-        from .services.file_service import FileService
-        from .services.import_service import ImportService
-        
-        # Registra come singleton
-        app.extensions['pdf_service'] = PDFService()
-        app.extensions['parsing_service'] = ParsingService()
-        app.extensions['file_service'] = FileService()
-        app.extensions['import_service'] = ImportService()
-        
-        app.logger.info("✅ Servizi modulari registrati con successo")
-        
+        from .blueprints.inventory import inventory_bp
+        app.register_blueprint(inventory_bp, url_prefix='/inventory')
     except ImportError as e:
-        app.logger.error(f"❌ Errore registrazione servizi: {e}")
-        # Non bloccare l'avvio se mancano servizi
-        pass
+        print(f"⚠️ Errore import inventory_bp: {e}")
+    
+    try:
+        from .blueprints.articles import articles_bp
+        app.register_blueprint(articles_bp, url_prefix='/articles')
+    except ImportError as e:
+        print(f"⚠️ Errore import articles_bp: {e}")
+    
+    try:
+        from .blueprints.movements import movements_bp
+        app.register_blueprint(movements_bp, url_prefix='/movements')
+    except ImportError as e:
+        print(f"⚠️ Errore import movements_bp: {e}")
+    
+    try:
+        from .blueprints.settings import settings_bp
+        app.register_blueprint(settings_bp, url_prefix='/settings')
+    except ImportError as e:
+        print(f"⚠️ Errore import settings_bp: {e}")
+    
+    try:
+        from .blueprints.files import files_bp
+        app.register_blueprint(files_bp, url_prefix='/files')
+    except ImportError as e:
+        print(f"⚠️ Errore import files_bp: {e}")
+    
+    try:
+        from .blueprints.lookups import lookups_bp
+        app.register_blueprint(lookups_bp, url_prefix='/lookups')
+    except ImportError as e:
+        print(f"⚠️ Errore import lookups_bp: {e}")
+    
+    try:
+        from .blueprints.docops import docops_bp
+        app.register_blueprint(docops_bp, url_prefix='/docops')
+    except ImportError as e:
+        print(f"⚠️ Errore import docops_bp: {e}")
+    
+    # IMPORTING - Blueprint originale (mantenuto per ora)
+    try:
+        from .blueprints.importing import importing_bp
+        app.register_blueprint(importing_bp, url_prefix='/importing')
+        print("✅ Registrato importing_bp (legacy)")
+    except ImportError as e:
+        print(f"⚠️ Errore import importing_bp: {e}")
 
 
-# AGGIORNAMENTO della funzione create_app esistente
-
-def create_app(config_name=None):
-    """Application factory pattern AGGIORNATO per supporto modulare"""
-    
-    if config_name is None:
-        config_name = os.environ.get('FLASK_ENV', 'development')
-    
-    app = Flask(
-        __name__,
-        instance_relative_config=True,
-        template_folder="templates",
-        static_folder="static",
-    )
-    
-    # Configurazione
-    app.config.from_object(config[config_name])
-    config[config_name].init_app(app)
-    
-    # Assicura che instance folder esista
-    os.makedirs(app.instance_path, exist_ok=True)
-    
-    # Inizializza estensioni  
-    init_extensions(app)
-    
-    # NUOVO: Registra servizi modulari
-    register_services(app)
-    
-    # Registra blueprints (AGGIORNATO per modularità)
-    register_blueprints(app)
-    
-    # Registra error handlers
-    register_error_handlers(app)
-    
-    # Registra context processors
-    register_context_processors(app)
-    
-    # Registra CLI commands
-    register_cli_commands(app)
-    
-    # Setup logging
-    setup_logging(app)
-    
-    # Security headers
-    setup_security_headers(app)
-    
-    app.logger.info(f"🚀 App creata in modalità {config_name}")
-    return app
-
-
-# NUOVO: Helper per accesso servizi
-
-def get_service(service_name: str):
-    """
-    Helper per accesso ai servizi registrati.
-    
-    Usage:
-        from app import get_service
-        import_service = get_service('import_service')
-    """
-    from flask import current_app
-    
-    if not hasattr(current_app, 'extensions'):
-        raise RuntimeError("Servizi non inizializzati")
-    
-    service = current_app.extensions.get(service_name)
-    if not service:
-        raise RuntimeError(f"Servizio '{service_name}' non trovato")
-    
-    return service
+# Per compatibilità con script esterni
+def create_app_for_cli():
+    """Crea app per CLI commands"""
+    return create_app()

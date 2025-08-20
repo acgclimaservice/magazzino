@@ -1,3 +1,4 @@
+from flask import redirect, url_for, request
 # app/blueprints/compatibility.py
 """
 Blueprint per gestire redirect di compatibilità durante il refactoring.
@@ -23,22 +24,22 @@ def legacy_workstation():
 
 
 # Legacy API redirects
-@compatibility_bp.route('/api/parse-ddt', methods=['POST'])
+@compatibility_bp.route("/api/parse-ddt", methods=["GET", "POST"])
 def legacy_api_parse_ddt():
     """Redirect da /api/parse-ddt a /api/import/ddt/parse"""
-    return redirect(url_for('import_api.parse_ddt'), code=307)  # 307 mantiene POST
+    return redirect(url_for('importing.api_parse_ddt'), code=307)  # 307 mantiene POST
 
 
 @compatibility_bp.route('/api/import-ddt-preview', methods=['POST'])
 def legacy_api_import_preview():
     """Redirect da /api/import-ddt-preview a /api/import/ddt/preview"""
-    return redirect(url_for('import_api.ddt_preview'), code=307)
+    return redirect(url_for('importing.import_ddt_preview'), code=307)
 
 
 @compatibility_bp.route('/api/import-ddt-confirm', methods=['POST'])
 def legacy_api_import_confirm():
     """Redirect da /api/import-ddt-confirm a /api/import/ddt/confirm"""
-    return redirect(url_for('import_api.ddt_confirm'), code=307)
+    return redirect(url_for('importing.import_ddt_confirm'), code=307)
 
 
 # === FUTURE MODULE REDIRECTS (preparati per prossimi refactoring) ===
@@ -69,3 +70,15 @@ def inject_migration_status():
         'migration_active': True,
         'legacy_mode': False
     }
+# Redirect API lookups per compatibilità
+@compatibility_bp.route('/api/magazzini')
+def api_magazzini_redirect():
+    """Redirect /api/magazzini → /lookups/api/magazzini"""
+    return redirect(url_for('lookups.api_magazzini'))
+
+@compatibility_bp.route('/api/mastrini')
+def api_mastrini_redirect():
+    """Redirect /api/mastrini → /lookups/api/mastrini"""
+    # Mantieni i query parameters (tipo=RICAVO)
+    args = '?' + request.query_string.decode() if request.query_string else ''
+    return redirect(url_for('lookups.api_mastrini') + args)

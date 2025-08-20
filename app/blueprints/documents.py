@@ -35,11 +35,11 @@ def _apply_filters(base_query, *, q_text=None, d_from=None, d_to=None, status=No
         q = q.filter(Documento.status == status)
     return q.order_by(desc(Documento.anno), desc(Documento.numero), desc(Documento.id))
 
-@documents_bp.get("/documents")
+@documents_bp.get("/")
 def documents_list():
     return redirect(url_for("documents.documents_in"))
 
-@documents_bp.get("/documents/in")
+@documents_bp.get("/in")
 def documents_in():
     q_text = request.args.get("q", type=str)
     d_from = _parse_date_any(request.args.get("from_date"))
@@ -54,7 +54,7 @@ def documents_in():
 
     return render_template("documents_in.html", pager=pager, docs=pager.items, status=status)
 
-@documents_bp.get("/documents/out")
+@documents_bp.get("/out")
 def documents_out():
     q_text = request.args.get("q", type=str)
     d_from = _parse_date_any(request.args.get("from_date"))
@@ -69,14 +69,14 @@ def documents_out():
 
     return render_template("documents_out.html", pager=pager, docs=pager.items, status=status)
 
-@documents_bp.get("/documents/<int:id>")
+@documents_bp.get("/<int:id>")
 def document_detail(id: int):
     # Usa il template v2 che contiene la logica JS
     doc = Documento.query.get_or_404(id)
     return render_template("document_detail_v2.html", doc=doc)
 
 # --- Creazione Manuale DDT IN ---
-@documents_bp.get("/documents/new-in")
+@documents_bp.get("/new-in")
 def new_in_form():
     """Mostra il form per creare l'intestazione di un nuovo DDT IN manuale."""
     magazzini = Magazzino.query.order_by(Magazzino.codice).all()
@@ -84,7 +84,7 @@ def new_in_form():
     clienti = Partner.query.filter_by(tipo='Cliente').order_by(Partner.nome).all()
     return render_template("document_new_in.html", magazzini=magazzini, fornitori=fornitori, clienti=clienti, today=datetime.today().date())
 
-@documents_bp.post("/documents/new-in")
+@documents_bp.post("/new-in")
 def new_in_save():
     """Salva l'intestazione di un nuovo DDT IN e reindirizza alla modifica."""
     try:

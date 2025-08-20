@@ -1,9 +1,9 @@
 {% extends "_base.html" %}
 {% block title %}Menu{% endblock %}
 {% block content %}
-{% set url_docs = safe_url('documents.documents_list', '/documents') %}
-{% set url_import = safe_url('importing.import_pdf', '/import-pdf') %}
-{% set url_ddtout = safe_url('importing.ddt_out_new', '/ddt-out/new') %}
+{% set url_docs = url_for('documents.documents_list') %}
+{% set url_import = url_for('importing.import_pdf') %}
+{% set url_ddtout = url_for('importing.ddt_out_new') %}
 <div class="grid md:grid-cols-3 gap-4">
   <a href="{{ url_docs }}" class="block border rounded-xl p-5 hover:shadow transition">
     <div class="text-lg font-semibold">Archivio Documenti</div>
