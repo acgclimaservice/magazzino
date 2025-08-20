@@ -22,22 +22,9 @@ def _safe_float(val, default=0.0):
         return float(val)
     except (ValueError, TypeError):
         return float(default)
-@docops_bp.get("/api/mastrini")
-def api_mastrini():
-    """
-    Restituisce la lista dei mastrini per il dropdown.
-    """
-    tipo = request.args.get("tipo", "ACQUISTO")
-    
-    # Per ora restituiamo alcuni mastrini di esempio
-    # Puoi implementare la logica vera in seguito
-    mastrini_esempio = [
-        {"codice": "001a", "descrizione": "Costi generali"},
-        {"codice": "002a", "descrizione": "Materiali"},
-        {"codice": "003a", "descrizione": "Servizi"},
-    ]
-    
-    return jsonify(mastrini_esempio)
+
+# ===== ENDPOINT /api/mastrini RIMOSSO - Era duplicato con dati fake! =====
+# Ora usa solo quello vero in lookups.py
 
 def _row_to_front_dict(r: RigaDocumento):
     """
@@ -96,7 +83,7 @@ def api_document_json(id: int):
             magazzino_info = f"{doc.magazzino.codice or ''} - {doc.magazzino.nome or ''}"
 
         # Carica le righe separatamente con eager loading degli articoli
-        # Necessario perché Documento.righe è lazy='dynamic'
+        # Necessario perchÃ© Documento.righe Ã¨ lazy='dynamic'
         try:
             rows = RigaDocumento.query.options(
                 joinedload(RigaDocumento.articolo)
@@ -161,7 +148,7 @@ def api_confirm_document(id: int):
         return jsonify({
             "ok": True, 
             "status": doc.status, 
-            "msg": "Documento già confermato."
+            "msg": "Documento giÃ  confermato."
         })
 
     try:
@@ -201,7 +188,7 @@ def api_confirm_document(id: int):
                 mv = Movimento(
                     data=doc.data,
                     articolo_id=r.articolo_id,
-                    quantita=q,  # La quantità nei movimenti è sempre positiva
+                    quantita=q,  # La quantitÃ  nei movimenti Ã¨ sempre positiva
                     tipo="scarico",
                     magazzino_partenza_id=doc.magazzino_id,
                     documento_id=doc.id,
