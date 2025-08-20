@@ -1,6 +1,7 @@
-from flask import Blueprint, render_template, request, jsonify, url_for, current_app
+from flask import Blueprint, render_template, request, jsonify, url_for, current_app, send_from_directory, abort
 from sqlalchemy.exc import IntegrityError
 from decimal import Decimal, InvalidOperation
+from werkzeug.utils import safe_join
 from ..extensions import db
 from ..models import Articolo, Magazzino, Partner, Documento, RigaDocumento, Movimento, Mastrino, Allegato
 from ..utils import parse_it_date, q_dec, money_dec, next_doc_number, unify_um, supplier_prefix, gen_internal_code
@@ -458,3 +459,29 @@ def api_inventory_search():
     except Exception as e:
         current_app.logger.exception("Errore in api_inventory_search")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+# ===== GESTIONE DOWNLOAD ALLEGATI =====
+@importing_bp.route('/files/download/<int:id>')
+def download_allegato(id):
+    """
+    Permette di scaricare un file allegato a un documento.
+    """
+    # Cerca l'allegato nel database o restituisce 404 se non esiste
+    allegato = Allegato.query.get_or_404(id)
+    
+    # Costruisce in modo sicuro il percorso assoluto del file sul server,
+    # partendo dalla root del progetto (la cartella sopra 'app').
+    project_root = os.path.dirname(current_app.root_path)
+    file_path = safe_join(project_root, allegato.path)
+    
+    # Controlla se il file esiste fisicamente, altrimenti restituisce 404.
+    if not os.path.isfile(file_path):
+        current_app.logger.error(f"Tentativo di download fallito. File non trovato: {file_path}")
+        abort(404)
+        
+    # Usa send_from_directory per inviare il file in modo sicuro.
+    # Richiede la cartella e il nome del file separati.
+    directory = os.path.dirname(file_path)
+    filename = os.path.basename(file_path)
+    
+    return send_from_directory(directory, filename, as_attachment=True)
