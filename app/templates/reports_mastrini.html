@@ -1,0 +1,23 @@
+
+{% extends "_base.html" %}
+{% block content %}
+<h1>Report Mastrini (Acquisti/Vendite)</h1>
+<form method="get" class="form-inline">
+  <label>Dal</label><input type="date" name="date_from" value="{{ date_from or '' }}">
+  <label>Al</label><input type="date" name="date_to" value="{{ date_to or '' }}">
+  <button class="btn">Applica</button>
+</form>
+<table class="table" style="margin-top:10px">
+  <thead><tr><th>Mastrino</th><th>Tot. Acquisti</th><th>Tot. Vendite</th><th>Saldo Q.tà</th></tr></thead>
+  <tbody>
+    {% for m, tot_in, tot_out, saldo in rows %}
+      <tr>
+        <td>{{ m }}</td>
+        <td>{{ '%.2f'|format(tot_in or 0) }}</td>
+        <td>{{ '%.2f'|format(tot_out or 0) }}</td>
+        <td>{{ saldo or 0 }}</td>
+      </tr>
+    {% else %}<tr><td colspan="4" class="text-center">Nessun dato</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

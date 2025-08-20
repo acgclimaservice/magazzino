@@ -1,0 +1,32 @@
+PATCH: Export DDT IN confermato con DDT importato (solo quello corretto)
+Data: 2025-08-18
+
+Cosa fa
+- Aggiunge due endpoint:
+  • GET /files/export-document-with-imported/<id>.pdf  → genera il PDF del documento e allega SOLO il PDF importato (il primo allegato PDF in ordine cronologico).
+  • GET /files/export-document-base/<id>.pdf          → genera il PDF del documento senza includere alcun allegato.
+- Aggiorna il pulsante in Dettaglio Documento per i DDT IN in stato "Confermato":
+  • "Esporta PDF (con DDT importato)" punta al nuovo endpoint.
+  • "Esporta PDF (solo documento)" punta al nuovo endpoint base.
+
+Motivazione
+- Il precedente export univa TUTTI gli allegati PDF del documento. Ora l’opzione dedicata ai DDT IN usa solo il PDF del DDT fornitore importato.
+- Per identificare il DDT importato, si usa il primo Allegato PDF in ordine di creazione (created_at asc), che coincide con il file spostato durante l’import.
+
+File modificati
+- app/blueprints/files.py            [+] nuove route export_document_with_imported_pdf e export_document_base_pdf
+- app/templates/document_detail.html [*] aggiornati i link dei pulsanti di export
+
+Note operative
+- Nessuna migrazione DB necessaria.
+- Se un DDT non ha allegati PDF, il tasto "con DDT importato" restituisce il solo documento base.
+- La funzionalità resta compatibile con l’export classico: "Esporta PDF" (tutti gli allegati).
+
+Rollback
+- Sovrascrivere i due file con le versioni precedenti.
+
+Test rapido
+1) Apri un DDT IN in stato "Confermato".
+2) Premi "Esporta PDF (solo documento)" → scarica _base.pdf (senza allegati).
+3) Premi "Esporta PDF (con DDT importato)" → scarica _con_importato.pdf con il DDT fornitore come uniche pagine aggiuntive.
+

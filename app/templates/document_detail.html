@@ -1,0 +1,240 @@
+{% extends "_base.html" %}
+{% block title %}Dettaglio Documento{% endblock %}
+
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-lg font-semibold">Documento {{ doc.tipo }} n. {{ doc.numero }}/{{ doc.anno or '' }}</div>
+      <div class="text-sm text-gray-600">Stato: <span id="doc-status">{{ doc.status }}</span></div>
+    </div>
+    <div class="flex gap-2">
+      {% if doc.status == 'Bozza' %}
+      <button id="btn-void" class="px-3 py-2 rounded bg-red-600 text-white text-sm">Elimina bozza</button>
+      <button id="btn-confirm" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Conferma</button>
+      <button id="btn-edit" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Modifica</button>
+      {% elif doc.status == 'Confermato' %}
+      <button id="btn-reverse" class="px-3 py-2 rounded bg-orange-600 text-white text-sm">Storna</button>
+      
+      <!-- BLOCCO MODIFICATO PER ESPORTAZIONE PDF -->
+      {% if doc.tipo == 'DDT_IN' and doc.allegati %}
+        <a class="px-3 py-2 rounded bg-slate-600 text-white text-sm" href="{{ url_for('files.export_document_base_pdf', id=doc.id) }}">PDF (Solo Doc)</a>
+        <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ url_for('files.export_document_pdf', id=doc.id) }}">PDF (con Allegato Originale)</a>
+      {% else %}
+        <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ url_for('files.export_document_pdf', id=doc.id) }}">Esporta PDF</a>
+      {% endif %}
+      <!-- FINE BLOCCO MODIFICATO -->
+
+      {% elif doc.status == 'Stornato' %}
+      <span class="px-3 py-2 rounded bg-yellow-100 text-yellow-900 text-sm">Documento stornato</span>
+      <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ url_for('files.export_document_pdf', id=doc.id) }}">Esporta PDF</a>
+      {% elif doc.status == 'Annullato' %}
+      <span class="px-3 py-2 rounded bg-gray-200 text-gray-700 text-sm">Documento annullato</span>
+      {% endif %}
+      <a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for('documents.documents_in') }}">Torna all'archivio</a>
+    </div>
+  </div>
+
+  <hr class="my-4"/>
+
+  <div id="void-banner" class="hidden p-3 rounded bg-yellow-50 text-yellow-900 text-sm"></div>
+
+  <div id="editor-bar" class="hidden mb-3 flex items-center gap-2">
+    <button id="btn-save" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Salva</button>
+    <button id="btn-cancel" class="px-3 py-2 rounded bg-gray-200 text-gray-800 text-sm">Annulla</button>
+    <span class="text-xs text-gray-500">Modifica attiva</span>
+  </div>
+
+  <div id="righe">
+    <div class="text-sm text-gray-500">Caricamento righe…</div>
+  </div>
+</div>
+
+<!-- Modal Annulla -->
+<div id="modal-void" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+  <div class="bg-white rounded-xl w-full max-w-lg shadow">
+    <div class="p-4 border-b font-semibold">Conferma annullamento bozza</div>
+    <div class="p-4 space-y-2">
+      <p class="text-sm text-gray-700">Il documento resterà numerato ma vuoto, con la nota “documento eliminato volontariamente”.</p>
+      <label class="text-sm">Motivazione (opzionale)</label>
+      <textarea id="void-reason" class="w-full border rounded p-2 text-sm" rows="3" placeholder="documento eliminato volontariamente"></textarea>
+    </div>
+    <div class="p-4 border-t flex justify-end gap-2">
+      <button id="void-cancel" class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm">Annulla</button>
+      <button id="void-ok" class="px-3 py-2 rounded bg-red-600 text-white text-sm">Elimina bozza</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function(){
+  const docId = {{ doc.id }};
+  const statusEl = document.getElementById('doc-status');
+  const righeEl = document.getElementById('righe');
+  const voidBanner = document.getElementById('void-banner');
+  const bar = document.getElementById('editor-bar');
+  let current = null;
+  let editMode = false;
+
+  function fmt3(n){
+    const x = Number(n||0);
+    if (Number.isFinite(x)) return x.toFixed(3);
+    return String(n||0);
+    }
+
+  async function loadDoc(){
+    const res = await fetch(`/api/documents/${docId}/json`);
+    if(!res.ok){
+      const t = await res.text();
+      throw new Error(`GET /api/documents/${docId}/json failed: ${res.status} ${t}`);
+    }
+    const j = await res.json();
+    if(!j.ok) throw new Error(j.error || 'payload not ok');
+    const d = j.doc;
+    current = d;
+    statusEl.textContent = d.status;
+
+    if(d.status === 'Annullato'){
+      voidBanner.textContent = d.note || 'documento eliminato volontariamente';
+      voidBanner.classList.remove('hidden');
+    }
+
+    if (!editMode){
+      const rows = d.righe || [];
+      if(!rows.length){
+        righeEl.innerHTML = '<div class="text-sm text-gray-500">Nessuna riga.</div>';
+      } else {
+        const html = ['<table class="w-full text-sm"><thead><tr class="text-left"><th class="py-1">Codice</th><th class="py-1">Descrizione</th><th class="py-1 text-right">Q.tà</th><th class="py-1 text-right">Prezzo</th><th class="py-1">Mastrino</th></tr></thead><tbody>'];
+        for(const r of rows){
+          html.push(`<tr class="border-t">
+            <td class="py-1">${r.codice_interno || r.codice_fornitore || ''}</td>
+            <td class="py-1">${r.descrizione || ''}</td>
+            <td class="py-1 text-right">${(r.quantita ?? 0)}</td>
+            <td class="py-1 text-right">${fmt3(r.prezzo)}</td>
+            <td class="py-1">${r.mastrino_codice || ''}</td>
+          </tr>`);
+        }
+        html.push('</tbody></table>');
+        righeEl.innerHTML = html.join('');
+      }
+    } else {
+      const rows = d.righe || [];
+      const html = ['<div class="overflow-x-auto"><table class="min-w-full text-sm"><thead><tr class="text-left border-b"><th class="py-1 pr-2">Codice</th><th class="py-1 pr-2">Descrizione</th><th class="py-1 pr-2 text-right">Q.tà</th><th class="py-1 pr-2 text-right">Prezzo</th><th class="py-1 pr-2">Mastrino</th></tr></thead><tbody>'];
+      for(const r of rows){
+        html.push(`<tr class="border-b" data-row-id="${r.id}">
+          <td class="py-1 pr-2">${r.codice_interno || r.codice_fornitore || ''}</td>
+          <td class="py-1 pr-2"><input class="w-full border rounded px-2 py-1" name="descrizione" value="${(r.descrizione||'').replace(/"/g,'&quot;')}"></td>
+          <td class="py-1 pr-2 text-right"><input class="w-24 border rounded px-2 py-1 text-right" name="quantita" value="${r.quantita ?? 0}"></td>
+          <td class="py-1 pr-2 text-right"><input class="w-28 border rounded px-2 py-1 text-right" name="prezzo" value="${fmt3(r.prezzo)}"></td>
+          <td class="py-1 pr-2"><input class="w-32 border rounded px-2 py-1" name="mastrino_codice" value="${r.mastrino_codice || ''}"></td>
+        </tr>`);
+      }
+      html.push('</tbody></table></div>');
+      righeEl.innerHTML = html.join('');
+    }
+  }
+
+  function collectPayload(){
+    const body = { header: {}, righe: [] };
+    righeEl.querySelectorAll('tr[data-row-id]').forEach(tr => {
+      const id = Number(tr.getAttribute('data-row-id'));
+      const descrizione = tr.querySelector('input[name="descrizione"]').value;
+      const quantita = parseFloat(tr.querySelector('input[name="quantita"]').value.replace(',','.')) || 0;
+      const prezzo = parseFloat(tr.querySelector('input[name="prezzo"]').value.replace(',','.')) || 0;
+      const mastrino = tr.querySelector('input[name="mastrino_codice"]').value.trim();
+      body.righe.push({ id, descrizione, quantita, prezzo, mastrino_codice: mastrino });
+    });
+    return body;
+  }
+
+  const btnConfirm = document.getElementById('btn-confirm');
+  if(btnConfirm){
+    btnConfirm.addEventListener('click', async () => {
+      if(!confirm('Confermare il documento?')) return;
+      const res = await fetch(`/api/documents/${docId}/confirm`, { method:'POST' });
+      const j = await res.json().catch(()=>({ok:false, error:'Risposta non JSON'}));
+      if(!res.ok || !j.ok){ return window.showError ? showError(new Error(j.error || 'Errore conferma'), 'confirm') : alert(j.error || 'Errore conferma'); }
+      location.reload();
+    });
+  }
+
+  const btnReverse = document.getElementById('btn-reverse');
+  if(btnReverse){
+    btnReverse.addEventListener('click', async () => {
+      if(!confirm('Stornare il documento confermato?')) return;
+      const res = await fetch(`/api/documents/${docId}/reverse`, { method:'POST' });
+      const j = await res.json().catch(()=>({ok:false, error:'Risposta non JSON'}));
+      if(!res.ok || !j.ok){ return window.showError ? showError(new Error(j.error || 'Errore storno'), 'reverse') : alert(j.error || 'Errore storno'); }
+      location.reload();
+    });
+  }
+
+  const btnVoid = document.getElementById('btn-void');
+  const modal = document.getElementById('modal-void');
+  const btnVoidOk = document.getElementById('void-ok');
+  const btnVoidCancel = document.getElementById('void-cancel');
+  const txtReason = document.getElementById('void-reason');
+
+  if(btnVoid){
+    btnVoid.addEventListener('click', ()=> { modal.classList.remove('hidden'); modal.classList.add('flex'); });
+  }
+  if(btnVoidCancel){
+    btnVoidCancel.addEventListener('click', ()=> { modal.classList.add('hidden'); modal.classList.remove('flex'); });
+  }
+  if(btnVoidOk){
+    btnVoidOk.addEventListener('click', async ()=> {
+      const reason = (txtReason.value || '').trim();
+      const res = await fetch(`/api/documents/${docId}/void`, {
+        method:'POST',
+        headers:{ 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      const j = await res.json().catch(()=>({ok:false, error:'Risposta non JSON'}));
+      if(!res.ok || !j.ok){
+        return window.showError ? showError(new Error(j.error || 'Errore annullamento'), 'void') : alert(j.error || 'Errore annullamento');
+      }
+      location.reload();
+    });
+  }
+
+  const btnEdit = document.getElementById('btn-edit');
+  const btnSave = document.getElementById('btn-save');
+  const btnCancel = document.getElementById('btn-cancel');
+  if(btnEdit){
+    btnEdit.addEventListener('click', async () => {
+      editMode = true;
+      bar.classList.remove('hidden');
+      await loadDoc();
+    });
+  }
+  if(btnCancel){
+    btnCancel.addEventListener('click', async () => {
+      editMode = false;
+      bar.classList.add('hidden');
+      await loadDoc();
+    });
+  }
+  if(btnSave){
+    btnSave.addEventListener('click', async () => {
+      const body = collectPayload();
+      const res = await fetch(`/api/documents/${docId}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await res.json().catch(()=>({ok:false, error:'Risposta non JSON'}));
+      if(!res.ok || !j.ok){
+        return window.showError ? showError(new Error(j.error || 'Errore salvataggio'), 'update') : alert(j.error || 'Errore salvataggio');
+      }
+      editMode = false;
+      bar.classList.add('hidden');
+      await loadDoc();
+    });
+  }
+
+  try { await loadDoc(); } catch(e){ window.showError ? showError(e, 'bootstrap document_detail') : alert(e.message); }
+})();
+</script>
+{% endblock %}

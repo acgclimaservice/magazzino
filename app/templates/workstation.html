@@ -1,0 +1,8 @@
+{% extends "_base.html" %}
+{% block title %}Workstation{% endblock %}
+{% block content %}
+<div class="bg-white p-6 rounded-xl shadow">
+  <h1 class="text-xl font-semibold mb-2">Workstation</h1>
+  <p class="text-sm text-gray-600">Moduli operativi in sviluppo. Vai a <a class="text-blue-700 hover:underline" href="{{ url_for('importing.import_pdf') }}">Importa PDF</a>.</p>
+</div>
+{% endblock %}

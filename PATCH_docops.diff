@@ -1,0 +1,150 @@
+--- app/blueprints/docops.py (originale)
++++ app/blueprints/docops.py (patch)
+@@ -4,6 +4,7 @@
+ 
+ from ..extensions import db
+ from ..models import Documento, RigaDocumento, Movimento
++from ..utils import update_giacenza, get_giacenza
+ 
+ docops_bp = Blueprint("docops", __name__)
+ 
+@@ -81,13 +82,52 @@
+     if doc.status == "Annullato":
+         return jsonify({"ok": False, "error": "Documento annullato: non confermabile."}), 400
+     if doc.status == "Confermato":
+-        return jsonify({"ok": True, "status": doc.status, "msg": "Documento già confermato."})
+-
+-    has_movs = Movimento.query.filter_by(documento_id=doc.id).first() is not None
+-    if has_movs:
++        return jsonify({"ok": True, "status": doc.status})
++
++    try:
++        rows = doc.righe.order_by(RigaDocumento.id).all()
++        if not rows:
++            return jsonify({"ok": False, "error": "Nessuna riga nel documento."}), 400
++
++        # Aggiornamento giacenze + generazione movimenti
++        for r in rows:
++            q = D(str(getattr(r, "quantita", 0) or 0))
++            if q <= 0:
++                continue
++            if doc.tipo == "DDT_IN":
++                # Carico a magazzino
++                update_giacenza(r.articolo_id, doc.magazzino_id, q)
++                mv = Movimento(
++                    data=doc.data,
++                    articolo_id=r.articolo_id,
++                    quantita=q,
++                    tipo="carico",
++                    magazzino_arrivo_id=doc.magazzino_id,
++                    documento_id=doc.id,
++                )
++            elif doc.tipo == "DDT_OUT":
++                # Scarico da magazzino con controllo stock
++                if get_giacenza(r.articolo_id, doc.magazzino_id) < q:
++                    raise ValueError("Giacenza insufficiente per lo scarico.")
++                update_giacenza(r.articolo_id, doc.magazzino_id, -q)
++                mv = Movimento(
++                    data=doc.data,
++                    articolo_id=r.articolo_id,
++                    quantita=-q,
++                    tipo="scarico",
++                    magazzino_partenza_id=doc.magazzino_id,
++                    documento_id=doc.id,
++                )
++            else:
++                raise ValueError("Tipo documento non gestito.")
++            db.session.add(mv)
++
+         doc.status = "Confermato"
+         db.session.commit()
+         return jsonify({"ok": True, "status": doc.status})
++    except Exception as e:
++        db.session.rollback()
++        return jsonify({"ok": False, "error": str(e)}), 500
+ 
+     def _as_D(x):
+         try:
+@@ -194,49 +234,42 @@
+         return jsonify({"ok": False, "error": "Solo documenti Confermati possono essere stornati."}), 400
+ 
+     try:
+-        movs = list(Movimento.query.filter_by(documento_id=doc.id).all())
+-
+-        if movs:
+-            for m in movs:
+-                tipo_opp = "carico" if (m.tipo or "").lower() == "scarico" else "scarico"
+-                q = D(str(m.quantita or 0)) * D("-1")
++        try:
++            rows = doc.righe.order_by(RigaDocumento.id).all()
++        except AttributeError:
++            rows = list(getattr(doc, "righe", []) or [])
++            rows.sort(key=lambda x: x.id or 0)
++
++        # Genera movimenti di storno + aggiorna giacenze
++        for r in rows:
++            q = D(str(getattr(r, "quantita", 0) or 0))
++            if q <= 0:
++                continue
++            if doc.tipo == "DDT_IN":
++                # Storno di un carico: scarico giacenza
++                if get_giacenza(r.articolo_id, doc.magazzino_id) < q:
++                    raise ValueError("Giacenza insufficiente per lo storno.")
++                update_giacenza(r.articolo_id, doc.magazzino_id, -q)
+                 rev = Movimento(
+                     data=doc.data,
+-                    articolo_id=m.articolo_id,
++                    articolo_id=r.articolo_id,
++                    quantita=-q,
++                    tipo="scarico",
++                    magazzino_partenza_id=doc.magazzino_id,
++                    documento_id=doc.id,
++                )
++            else:  # DDT_OUT
++                # Storno di uno scarico: ripristino giacenza
++                update_giacenza(r.articolo_id, doc.magazzino_id, q)
++                rev = Movimento(
++                    data=doc.data,
++                    articolo_id=r.articolo_id,
+                     quantita=q,
+-                    tipo=tipo_opp,
+-                    magazzino_partenza_id=m.magazzino_arrivo_id,
+-                    magazzino_arrivo_id=m.magazzino_partenza_id,
+-                    documento_id=doc.id,
+-                )
+-                db.session.add(rev)
+-        else:
+-            try:
+-                rows = doc.righe.order_by(RigaDocumento.id).all()
+-            except AttributeError:
+-                rows = list(getattr(doc, "righe", []) or [])
+-
+-            for r in rows:
+-                q = D(str(getattr(r, "quantita", 0) or 0))
+-                if doc.tipo == "DDT_IN":
+-                    rev = Movimento(
+-                        data=doc.data,
+-                        articolo_id=r.articolo_id,
+-                        quantita=-q,
+-                        tipo="scarico",
+-                        magazzino_partenza_id=doc.magazzino_id,
+-                        documento_id=doc.id,
+-                    )
+-                else:
+-                    rev = Movimento(
+-                        data=doc.data,
+-                        articolo_id=r.articolo_id,
+-                        quantita=q,
+-                        tipo="carico",
+-                        magazzino_arrivo_id=doc.magazzino_id,
+-                        documento_id=doc.id,
+-                    )
+-                db.session.add(rev)
++                    tipo="carico",
++                    magazzino_arrivo_id=doc.magazzino_id,
++                    documento_id=doc.id,
++                )
++            db.session.add(rev)
+ 
+         doc.status = "Stornato"
+         try:

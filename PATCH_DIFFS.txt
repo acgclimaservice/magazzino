@@ -1,0 +1,81 @@
+--- document_detail.html (originale)
++++ document_detail.html (patch)
+@@ -5,7 +5,7 @@
+ <div class="bg-white p-4 rounded-xl shadow">
+   <div class="flex items-center justify-between">
+     <div>
+-      <div class="text-lg font-semibold">Documento {{ doc.tipo }} n. {{ doc.numero }} / {{ doc.anno or '' }}</div>
++      <div class="text-lg font-semibold">Documento {{ doc.tipo }} n. {{ doc.numero }}/{{ doc.anno or '' }}</div>
+       <div class="text-sm text-gray-600">Stato: <span id="doc-status">{{ doc.status }}</span></div>
+     </div>
+     <div class="flex gap-2">
+
+
+--- _documents_list_table_in.html (originale)
++++ _documents_list_table_in.html (patch)
+@@ -2,7 +2,7 @@
+ <table class="w-full text-sm border">
+   <thead class="bg-gray-100">
+     <tr>
+-      <th class="p-2">N.</th>
++      <th class="p-2">N./Anno</th>
+       <th class="p-2">Data</th>
+       <th class="p-2">Fornitore</th>
+       <th class="p-2">Magazzino Dest.</th>
+@@ -13,7 +13,7 @@
+   <tbody>
+     {% for doc in docs %}
+     <tr class="border-t">
+-      <td class="p-2">{{ doc.numero }}</td>
++      <td class="p-2">{{ doc.numero }}/{{ doc.anno }}</td>
+       <td class="p-2">{{ doc.data }}</td>
+       <td class="p-2">{{ doc.partner.nome if doc.partner else '' }}</td>
+       <td class="p-2">{{ doc.magazzino.codice if doc.magazzino else '' }}</td>
+
+
+--- _documents_list_table_out.html (originale)
++++ _documents_list_table_out.html (patch)
+@@ -2,7 +2,7 @@
+ <table class="w-full text-sm border">
+   <thead class="bg-gray-100">
+     <tr>
+-      <th class="p-2">N.</th>
++      <th class="p-2">N./Anno</th>
+       <th class="p-2">Data</th>
+       <th class="p-2">Cliente</th>
+       <th class="p-2">Magazzino Orig.</th>
+@@ -13,7 +13,7 @@
+   <tbody>
+     {% for doc in docs %}
+     <tr class="border-t">
+-      <td class="p-2">{{ doc.numero }}</td>
++      <td class="p-2">{{ doc.numero }}/{{ doc.anno }}</td>
+       <td class="p-2">{{ doc.data }}</td>
+       <td class="p-2">{{ doc.partner.nome if doc.partner else '' }}</td>
+       <td class="p-2">{{ doc.magazzino.codice if doc.magazzino else '' }}</td>
+
+
+--- documents_in.html (originale)
++++ documents_in.html (patch)
+@@ -13,7 +13,7 @@
+       <a href="{{ url_for('importing.ddt_out_new') }}" class="px-3 py-1 rounded bg-indigo-600 text-white">Nuovo DDT OUT</a>
+     </div>
+   </div>
+-  <div class="text-xs text-gray-500">Ordinati per numero crescente</div>
++  <div class="text-xs text-gray-500">Ordinati per n./anno (Anno ↓, Numero ↓)</div>
+ 
+   {% include "_documents_list_filters.html" %}
+   {% include "_documents_list_table_in.html" %}
+
+
+--- documents_out.html (originale)
++++ documents_out.html (patch)
+@@ -13,7 +13,7 @@
+       <a href="{{ url_for('importing.ddt_out_new') }}" class="px-3 py-1 rounded bg-indigo-600 text-white">Nuovo DDT OUT</a>
+     </div>
+   </div>
+-  <div class="text-xs text-gray-500">Ordinati per numero crescente</div>
++  <div class="text-xs text-gray-500">Ordinati per n./anno (Anno ↓, Numero ↓)</div>
+ 
+   {% include "_documents_list_filters.html" %}
+   {% include "_documents_list_table_out.html" %}

@@ -1,0 +1,341 @@
+from flask import Blueprint, jsonify, request, url_for
+from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
+from decimal import Decimal as D
+from datetime import datetime, date
+import traceback
+
+from ..extensions import db
+from ..models import Documento, RigaDocumento, Movimento, Articolo, Partner, Magazzino
+from ..utils import update_giacenza, get_giacenza, next_doc_number, required, q_dec, money_dec
+
+docops_bp = Blueprint("docops", __name__)
+
+
+def _safe_float(val, default=0.0):
+    """
+    Converte in modo sicuro un valore (potenzialmente Decimal o None) in un float.
+    """
+    if val is None:
+        return float(default)
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return float(default)
+
+# ===== ENDPOINT /api/mastrini RIMOSSO - Era duplicato con dati fake! =====
+# Ora usa solo quello vero in lookups.py
+
+def _row_to_front_dict(r: RigaDocumento):
+    """
+    Converte una RigaDocumento in un dizionario per il frontend.
+    Gestisce in modo sicuro le relazioni che potrebbero non essere caricate.
+    """
+    codice_interno = None
+    codice_fornitore = None
+    
+    try:
+        if r and r.articolo:
+            codice_interno = r.articolo.codice_interno
+            codice_fornitore = r.articolo.codice_fornitore
+    except AttributeError:
+        pass  # Le relazioni potrebbero non essere caricate
+
+    return {
+        "id": r.id,
+        "articolo_id": r.articolo_id,
+        "codice_interno": codice_interno,
+        "codice_fornitore": codice_fornitore,
+        "descrizione": r.descrizione or "",
+        "quantita": _safe_float(r.quantita, 0),
+        "prezzo": _safe_float(r.prezzo, 0),
+        "mastrino_codice": r.mastrino_codice,
+    }
+
+
+@docops_bp.get("/api/documents/<int:id>/json")
+def api_document_json(id: int):
+    """
+    Restituisce i dati completi di un documento in formato JSON.
+    Gestisce in modo sicuro il caso di documento non esistente.
+    """
+    try:
+        # Carica il documento con le relazioni che supportano joinedload
+        doc = Documento.query.options(
+            joinedload(Documento.partner),
+            joinedload(Documento.magazzino),
+            joinedload(Documento.allegati)
+        ).get(id)  # Usa get() invece di get_or_404()
+        
+        if not doc:
+            return jsonify({
+                "ok": False, 
+                "error": f"Documento con ID {id} non trovato nel database"
+            }), 404
+
+        # Accesso sicuro alle relazioni
+        partner_name = ""
+        if doc.partner:
+            partner_name = doc.partner.nome or ""
+
+        magazzino_info = ""
+        if doc.magazzino:
+            magazzino_info = f"{doc.magazzino.codice or ''} - {doc.magazzino.nome or ''}"
+
+        # Carica le righe separatamente con eager loading degli articoli
+        # Necessario perchÃ© Documento.righe Ã¨ lazy='dynamic'
+        try:
+            rows = RigaDocumento.query.options(
+                joinedload(RigaDocumento.articolo)
+            ).filter_by(documento_id=doc.id).order_by(RigaDocumento.id).all()
+            righe = [_row_to_front_dict(r) for r in rows]
+        except Exception as e:
+            print(f"Errore nel caricare righe per documento {id}: {e}")
+            righe = []
+
+        # Processa gli allegati in modo sicuro
+        allegati = []
+        if hasattr(doc, 'allegati') and doc.allegati:
+            for a in doc.allegati:
+                if a and a.id:
+                    try:
+                        allegati.append({
+                            "id": a.id,
+                            "filename": a.filename or "File senza nome",
+                            "url": url_for('files.download_attachment', allegato_id=a.id)
+                        })
+                    except Exception as e:
+                        print(f"Errore nel processare allegato {a.id}: {e}")
+                        # Continua senza aggiungere questo allegato
+
+        # Costruisce la risposta
+        doc_out = {
+            "id": doc.id,
+            "tipo": doc.tipo,
+            "numero": doc.numero,
+            "anno": getattr(doc, "anno", None),
+            "data": doc.data.isoformat() if doc.data else None,
+            "data_creazione": doc.data_creazione.isoformat() if doc.data_creazione else None,
+            "status": doc.status,
+            "partner_id": doc.partner_id,
+            "partner_nome": partner_name,
+            "magazzino_id": getattr(doc, "magazzino_id", None),
+            "magazzino_info": magazzino_info,
+            "note": getattr(doc, "note", None),
+            "righe": righe,
+            "allegati": allegati
+        }
+        
+        return jsonify({"ok": True, "doc": doc_out})
+
+    except Exception as e:
+        print(f"ERRORE GRAVE in api_document_json per doc ID {id}:")
+        traceback.print_exc()
+        return jsonify({
+            "ok": False, 
+            "error": "Errore interno del server durante il recupero dei dati del documento."
+        }), 500
+
+
+@docops_bp.post("/api/documents/<int:id>/confirm")
+def api_confirm_document(id: int):
+    """
+    Conferma un documento in bozza, assegnando numero e data.
+    Aggiorna le giacenze e crea i movimenti di magazzino.
+    """
+    doc = Documento.query.get_or_404(id)
+    if doc.status != "Bozza":
+        return jsonify({
+            "ok": True, 
+            "status": doc.status, 
+            "msg": "Documento giÃ  confermato."
+        })
+
+    try:
+        rows = doc.righe.order_by(RigaDocumento.id).all()
+        if not rows:
+            return jsonify({
+                "ok": False, 
+                "error": "Nessuna riga nel documento."
+            }), 400
+
+        # Assegna numero e data al momento della conferma
+        today = datetime.utcnow().date()
+        doc.data = today
+        doc.anno = today.year
+        doc.numero = next_doc_number(doc.tipo, doc.anno)
+
+        # Aggiornamento giacenze e generazione movimenti
+        for r in rows:
+            q = D(str(getattr(r, "quantita", 0) or 0))
+            if q <= 0:
+                continue
+            
+            if doc.tipo == "DDT_IN":
+                update_giacenza(r.articolo_id, doc.magazzino_id, q)
+                mv = Movimento(
+                    data=doc.data,
+                    articolo_id=r.articolo_id,
+                    quantita=q,
+                    tipo="carico",
+                    magazzino_arrivo_id=doc.magazzino_id,
+                    documento_id=doc.id,
+                )
+            elif doc.tipo == "DDT_OUT":
+                if get_giacenza(r.articolo_id, doc.magazzino_id) < q:
+                    raise ValueError(f"Giacenza insufficiente per l'articolo {r.articolo.codice_interno if r.articolo else 'N/A'}.")
+                update_giacenza(r.articolo_id, doc.magazzino_id, -q)
+                mv = Movimento(
+                    data=doc.data,
+                    articolo_id=r.articolo_id,
+                    quantita=q,  # La quantitÃ  nei movimenti Ã¨ sempre positiva
+                    tipo="scarico",
+                    magazzino_partenza_id=doc.magazzino_id,
+                    documento_id=doc.id,
+                )
+            else:
+                raise ValueError("Tipo documento non gestito.")
+            
+            db.session.add(mv)
+
+        doc.status = "Confermato"
+        db.session.commit()
+        return jsonify({"ok": True, "status": doc.status})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@docops_bp.post("/api/documents/<int:id>/delete-draft")
+def api_delete_draft(id: int):
+    """
+    Elimina una bozza di documento.
+    """
+    doc = Documento.query.get_or_404(id)
+    if doc.status != "Bozza":
+        return jsonify({
+            "ok": False, 
+            "error": "Solo le bozze possono essere eliminate."
+        }), 400
+    
+    try:
+        db.session.delete(doc)
+        db.session.commit()
+        return jsonify({"ok": True, "msg": "Bozza eliminata."})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@docops_bp.post("/api/documents/<int:id>/add-line")
+def api_add_line(id: int):
+    """
+    Aggiunge una riga a un documento in bozza.
+    """
+    doc = Documento.query.get_or_404(id)
+    if doc.status != "Bozza":
+        return jsonify({
+            "ok": False, 
+            "error": "Puoi aggiungere righe solo alle bozze."
+        }), 400
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({
+            "ok": False, 
+            "error": "Dati JSON non ricevuti."
+        }), 400
+    
+    try:
+        articolo_id = data.get('articolo_id')
+        if not articolo_id:
+            return jsonify({
+                "ok": False, 
+                "error": "ID articolo non specificato."
+            }), 400
+
+        art = Articolo.query.get(int(articolo_id))
+        if not art:
+            return jsonify({
+                "ok": False, 
+                "error": "Articolo non trovato."
+            }), 404
+
+        new_line = RigaDocumento(
+            documento_id=doc.id,
+            articolo_id=art.id,
+            descrizione=art.descrizione,
+            quantita=q_dec(data.get('quantita', '1')),
+            prezzo=money_dec(data.get('prezzo', '0')),
+            mastrino_codice=data.get('mastrino_codice')
+        )
+        
+        db.session.add(new_line)
+        db.session.commit()
+        
+        return jsonify({
+            "ok": True, 
+            "line": _row_to_front_dict(new_line)
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@docops_bp.post("/api/documents/lines/<int:line_id>/delete")
+def api_delete_line(line_id: int):
+    """
+    Elimina una riga da un documento in bozza.
+    """
+    line = RigaDocumento.query.get_or_404(line_id)
+    if line.documento.status != "Bozza":
+        return jsonify({
+            "ok": False, 
+            "error": "Puoi eliminare righe solo dalle bozze."
+        }), 400
+    
+    try:
+        db.session.delete(line)
+        db.session.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@docops_bp.get("/api/articles/search")
+def api_articles_search():
+    """
+    Cerca articoli per codice interno, descrizione o codice fornitore.
+    """
+    q = request.args.get("q", "").strip()
+    limit = request.args.get("limit", 10, type=int)
+    
+    if not q:
+        return jsonify([])
+
+    try:
+        query = Articolo.query.filter(
+            or_(
+                Articolo.codice_interno.ilike(f"%{q}%"),
+                Articolo.descrizione.ilike(f"%{q}%"),
+                Articolo.codice_fornitore.ilike(f"%{q}%")
+            )
+        ).limit(limit).all()
+
+        results = [
+            {
+                "id": art.id,
+                "codice_interno": art.codice_interno,
+                "descrizione": art.descrizione,
+                "last_cost": _safe_float(art.last_cost, 0)
+            } for art in query
+        ]
+        
+        return jsonify(results)
+        
+    except Exception as e:
+        print(f"Errore nella ricerca articoli: {e}")
+        return jsonify({"ok": False, "error": "Errore nella ricerca articoli"}), 500

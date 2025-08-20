@@ -1,0 +1,281 @@
+{% extends "_base.html" %}
+{% block title %}Importa PDF{% endblock %}
+{% block content %}
+<style>
+/* Fallback per animazione spin se Tailwind animate-spin non è disponibile */
+@keyframes spin { to { transform: rotate(360deg); } }
+.tw-spin { animation: spin 1s linear infinite; }
+</style>
+
+<!-- Overlay di caricamento -->
+<div id="loading-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+  <div class="bg-white rounded-xl shadow p-5 flex items-center gap-4">
+    <div class="h-8 w-8 rounded-full border-2 border-gray-300 border-t-indigo-600 tw-spin"></div>
+    <div>
+      <div class="font-semibold text-gray-800">Operazione in corso…</div>
+      <div class="msg text-sm text-gray-600">Elaborazione…</div>
+    </div>
+  </div>
+</div>
+
+<div class="bg-white p-6 rounded-xl shadow space-y-6">
+  <h1 class="text-xl font-semibold">Importa DDT Fornitore</h1>
+
+  <!-- STEP 1: Upload & Parse -->
+  <form id="form-ddt" class="space-y-2">
+    <label class="text-sm">DDT Fornitore (PDF)</label>
+    <input type="file" name="pdf_file" accept="application/pdf" class="border rounded-md p-2 w-full" required>
+    <div class="flex gap-2">
+      <button class="px-3 py-2 bg-indigo-600 text-white rounded-md" type="submit">Estrai dati</button>
+      <button id="btn-ddt-confirm" class="px-3 py-2 bg-emerald-600 text-white rounded-md" type="button" disabled>Crea Bozza DDT</button>
+    </div>
+  </form>
+
+  <!-- Metodo nota -->
+  <div id="ddt-note" class="hidden text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2"></div>
+
+  <!-- STEP 2: Editable Meta -->
+  <div id="meta-box" class="hidden grid md:grid-cols-3 gap-4 text-sm">
+    <div class="md:col-span-2">
+      <label class="block text-gray-600 mb-1">Fornitore</label>
+      <input id="fld-fornitore" type="text" class="border rounded-md p-2 w-full">
+    </div>
+    <div>
+      <label class="block text-gray-600 mb-1">Magazzino di Destinazione</label>
+      <select id="sel-magazzino" class="border rounded-md p-2 w-full"></select>
+    </div>
+    <div>
+      <label class="block text-gray-600 mb-1">Commessa (Cliente)</label>
+      <select id="sel-commessa" class="border rounded-md p-2 w-full"></select>
+    </div>
+  </div>
+
+  <!-- STEP 3: Editable Rows -->
+  <div id="rows-box" class="hidden">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-lg font-semibold">Righe</h2>
+      <div class="text-xs text-gray-500">Imposta il <b>mastrino</b> per ogni riga prima del salvataggio</div>
+    </div>
+    <div class="overflow-x-auto border rounded">
+      <table class="w-full text-xs" id="rows-table">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="p-2 text-left">Cod. Fornitore</th>
+            <th class="p-2 text-left">Descrizione</th>
+            <th class="p-2 text-right">Q.tà</th>
+            <th class="p-2 text-left">UM</th>
+            <th class="p-2 text-right">Prezzo Unit.</th>
+            <th class="p-2 text-left">Mastrino</th>
+          </tr>
+        </thead>
+        <tbody id="rows-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- STEP 4: Dev utils -->
+  <div class="pt-2 border-t">
+    <div class="flex gap-2">
+      <button id="btn-clear-in" class="px-2 py-1 border rounded text-xs">Clear DDT IN</button>
+      <button id="btn-clear-out" class="px-2 py-1 border rounded text-xs">Clear DDT OUT</button>
+      <button id="btn-clear-art" class="px-2 py-1 border rounded text-xs">Clear Articoli</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let parsedDDT = null;        // risposta di /api/parse-ddt
+let previewState = null;     // oggetto normalizzato da /api/import-ddt-preview
+let mastriniList = [];       // cache mastrini ACQUISTO
+
+function showLoading(msg){
+  const o = document.getElementById('loading-overlay');
+  o.querySelector('.msg').textContent = msg || 'Elaborazione…';
+  o.classList.remove('hidden');
+  document.querySelectorAll('button, input, select').forEach(el => el.disabled = true);
+}
+function hideLoading(){
+  const o = document.getElementById('loading-overlay');
+  o.classList.add('hidden');
+  document.querySelectorAll('button, input, select').forEach(el => el.disabled = false);
+}
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error('Risposta non JSON: ' + t); }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return j;
+}
+async function postJSON(url, data) {
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error('Risposta non JSON: ' + t); }
+  if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+// Load selects
+async function loadMagazzini() {
+  const response = await getJSON('/api/magazzini');
+  const rows = response.data || response; // Supporta nuovo formato {ok: true, data: [...]} e vecchio [...]
+  const sel = document.getElementById('sel-magazzino');
+  sel.innerHTML = '';
+  for (const m of rows) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.codice} — ${m.nome}`;
+    sel.appendChild(opt);
+  }
+}
+async function loadClienti() {
+  const response = await getJSON('/api/clienti');
+  const rows = response.data || response; // Supporta nuovo formato {ok: true, data: [...]} e vecchio [...]
+  const sel = document.getElementById('sel-commessa');
+  sel.innerHTML = '';
+  const optNone = document.createElement('option');
+  optNone.value = '';
+  optNone.textContent = '— Nessuna —';
+  sel.appendChild(optNone);
+  for (const c of rows) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.nome;
+    sel.appendChild(opt);
+  }
+}
+async function loadMastrini() {
+  const response = await getJSON('/api/mastrini?tipo=ACQUISTO');
+  mastriniList = response.data || response; // Supporta nuovo formato {ok: true, data: [...]} e vecchio [...]
+}
+
+// Util: select HTML for mastrino
+function mastrinoSelectHTML(selected) {
+  const opts = mastriniList.map(m => {
+    const sel = (m.codice === selected) ? 'selected' : '';
+    return `<option value="${m.codice}" ${sel}>${m.codice} — ${m.descrizione}</option>`;
+  }).join('');
+  return `<select class="border rounded-md p-1">${opts}</select>`;
+}
+
+// Render editor rows
+function renderRows(righe) {
+  const tb = document.getElementById('rows-body');
+  tb.innerHTML = '';
+  const defaultM = (mastriniList && mastriniList.length) ? mastriniList[0].codice : '';
+  righe.forEach((r, idx) => {
+    const selCode = r.mastrino_codice || defaultM;
+    const tr = document.createElement('tr');
+    tr.className = 'border-t';
+    tr.innerHTML = `
+      <td class="p-2"><input class="w-40 border rounded p-1" value="${(r.codice ?? '').toString().replace(/"/g,'&quot;')}"></td>
+      <td class="p-2"><input class="w-full border rounded p-1" value="${(r.descrizione ?? '').toString().replace(/"/g,'&quot;')}"></td>
+      <td class="p-2 text-right"><input type="number" step="0.001" class="w-24 border rounded p-1 text-right" value="${Number(r.quantità ?? r.quantita ?? r.qty ?? 0)}"></td>
+      <td class="p-2"><input class="w-16 border rounded p-1" value="${(r.um ?? 'PZ').toString().replace(/"/g,'&quot;')}"></td>
+      <td class="p-2 text-right"><input type="number" step="0.01" class="w-24 border rounded p-1 text-right" value="${Number(r.prezzo_unitario ?? r.prezzo ?? 0)}"></td>
+      <td class="p-2">${mastrinoSelectHTML(selCode)}</td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+function readRowsFromDOM() {
+  const tb = document.getElementById('rows-body');
+  const out = [];
+  tb.querySelectorAll('tr').forEach(tr => {
+    const inputs = tr.querySelectorAll('td input');
+    const sel = tr.querySelector('td select');
+    const codice = inputs[0].value.trim();
+    const descrizione = inputs[1].value.trim();
+    const quantita = parseFloat(inputs[2].value.replace(',', '.')) || 0;
+    const um = inputs[3].value.trim() || 'PZ';
+    const prezzo_unitario = parseFloat(inputs[4].value.replace(',', '.')) || 0;
+    const mastrino_codice = sel ? sel.value : null;
+    out.push({ codice, descrizione, quantità: quantita, um, prezzo_unitario, mastrino_codice });
+  });
+  return out;
+}
+
+// EVENTS
+document.getElementById('form-ddt').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.currentTarget;
+  const data = new FormData(f);
+  try {
+    showLoading('Sto estraendo i dati dal PDF…');
+    const resp = await fetch('/api/parse-ddt', { method: 'POST', body: data });
+    const txt = await resp.text();
+    let parsed;
+    try { parsed = JSON.parse(txt); } catch { throw new Error('Risposta non JSON: ' + txt); }
+    if (!resp.ok || parsed.ok === false) throw new Error(parsed.error || ('HTTP ' + resp.status));
+    parsedDDT = parsed;
+
+    const noteBox = document.getElementById('ddt-note');
+    noteBox.classList.add('hidden'); noteBox.textContent = '';
+    if (parsed.method) {
+      noteBox.textContent = 'Metodo parsing: ' + parsed.method + (parsed.note ? ' — ' + parsed.note : '');
+      noteBox.classList.remove('hidden');
+    }
+
+    const [prev] = await Promise.all([
+      postJSON('/api/import-ddt-preview', { data: parsed.data, uploaded_file: parsed.uploaded_file }),
+      loadMagazzini(),
+      loadClienti(),
+      loadMastrini()
+    ]);
+    previewState = prev.preview;
+
+    document.getElementById('fld-fornitore').value = previewState.fornitore || '';
+    renderRows(previewState.righe || []);
+
+    document.getElementById('meta-box').classList.remove('hidden');
+    document.getElementById('rows-box').classList.remove('hidden');
+    document.getElementById('btn-ddt-confirm').disabled = false;
+  } catch (err) {
+    alert('Errore parsing DDT: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+});
+
+document.getElementById('btn-ddt-confirm').addEventListener('click', async () => {
+  if (!previewState) { alert('Prima estrai i dati.'); return; }
+  try {
+    showLoading('Sto salvando il documento…');
+    const payload = {
+      fornitore: document.getElementById('fld-fornitore').value,
+      righe: readRowsFromDOM(),
+      uploaded_file: previewState.uploaded_file,
+      magazzino_id: document.getElementById('sel-magazzino').value || null,
+      commessa_id: document.getElementById('sel-commessa').value || null
+    };
+    const res = await postJSON('/api/import-ddt-confirm', payload);
+    if (res.redirect_url) { window.location.href = res.redirect_url; }
+    else if (res.document_id) { window.location.href = '/documents/' + res.document_id; }
+    else { alert('Salvato ma senza URL di redirect.'); }
+  } catch (err) {
+    alert('Errore salvataggio DDT: ' + err.message);
+    hideLoading();
+  }
+});
+
+async function callClear(url) {
+  try {
+    showLoading('Pulizia dati di test…');
+    const res = await fetch(url, { method: 'POST' });
+    const txt = await res.text();
+    let j; try { j = JSON.parse(txt); } catch { throw new Error('Risposta non JSON: ' + txt); }
+    if (j.ok) alert(j.msg || 'OK'); else alert('Errore: ' + (j.error || ''));
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  } finally {
+    hideLoading();
+  }
+}
+document.getElementById('btn-clear-in').addEventListener('click', () => callClear('/test/clear-ddt-in'));
+document.getElementById('btn-clear-out').addEventListener('click', () => callClear('/test/clear-ddt-out'));
+document.getElementById('btn-clear-art').addEventListener('click', () => callClear('/test/clear-articles'));
+</script>
+{% endblock %}

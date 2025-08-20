@@ -1,0 +1,112 @@
+<!-- Selectable Error Modal -->
+<style>
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-card { background: #fff; border-radius: 12px; width: min(900px, 95vw); max-height: 85vh; box-shadow: 0 10px 30px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+  .modal-hd { padding: 14px 16px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+  .modal-bd { padding: 10px 16px; overflow: auto; }
+  .modal-ft { padding: 10px 16px; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; justify-content: flex-end; }
+  .btn { border: 1px solid #e5e7eb; background: #fff; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+  .btn.primary { background: #4f46e5; color: #fff; border-color: #4338ca; }
+  .btn.danger { background: #ef4444; color: #fff; border-color: #dc2626; }
+  .btn:disabled { opacity: .6; cursor: not-allowed; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .field { width: 100%; resize: vertical; min-height: 220px; white-space: pre; }
+</style>
+
+<div id="err-overlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="err-title">
+  <div class="modal-card">
+    <div class="modal-hd">
+      <div class="mono" id="err-title">Errore applicativo</div>
+      <button class="btn" id="err-close">Chiudi</button>
+    </div>
+    <div class="modal-bd">
+      <textarea id="err-text" class="mono field" readonly></textarea>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" id="err-select">Seleziona tutto</button>
+      <button class="btn" id="err-copy">Copia negli appunti</button>
+      <button class="btn primary" id="err-close2">OK</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const overlay = document.getElementById('err-overlay');
+  const txt = document.getElementById('err-text');
+  const btnCopy = document.getElementById('err-copy');
+  const btnSelect = document.getElementById('err-select');
+  const btnClose = document.getElementById('err-close');
+  const btnClose2 = document.getElementById('err-close2');
+
+  function openModal() { overlay.style.display = 'flex'; setTimeout(()=>{ txt.focus(); txt.selectionStart = 0; txt.selectionEnd = 0; }, 0); }
+  function closeModal() { overlay.style.display = 'none'; }
+
+  function setText(t) {
+    txt.value = t;
+    openModal();
+  }
+
+  btnCopy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(txt.value);
+      btnCopy.textContent = 'Copiato ✓';
+      setTimeout(()=> btnCopy.textContent = 'Copia negli appunti', 1500);
+    } catch(e) {
+      // fallback
+      txt.select();
+      document.execCommand('copy');
+    }
+  });
+  btnSelect.addEventListener('click', () => { txt.focus(); txt.select(); });
+  btnClose.addEventListener('click', closeModal);
+  btnClose2.addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+  // Espone API globali
+  window.showError = function(err, ctx){
+    try {
+      const now = new Date().toISOString();
+      let msg = "";
+      if (err && typeof err === 'object') {
+        msg = [
+          `Contesto: ${ctx || location.pathname}`,
+          `Messaggio: ${err.message || String(err)}`,
+          err.stack ? `Stack:\n${err.stack}` : null,
+          `Timestamp: ${now}`
+        ].filter(Boolean).join('\n\n');
+      } else {
+        msg = [
+          `Contesto: ${ctx || location.pathname}`,
+          `Messaggio: ${String(err)}`,
+          `Timestamp: ${now}`
+        ].join('\n\n');
+      }
+      setText(msg);
+      console.error('[ErrorModal]', msg);
+    } catch(ex) {
+      alert('Errore non gestito: ' + (err && err.message ? err.message : String(err)));
+    }
+  };
+
+  window.showInfo = function(lines) {
+    const now = new Date().toISOString();
+    const msg = Array.isArray(lines) ? lines.join('\n') : String(lines || '');
+    setText(`[INFO]\n${msg}\n\nTimestamp: ${now}`);
+  };
+
+  // Aggancia errori non gestiti globali
+  window.addEventListener('error', function(e){
+    const err = e.error || new Error(e.message || 'Errore sconosciuto');
+    showError(err, 'window.onerror');
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    const reason = e.reason || new Error('Unhandled Promise rejection');
+    showError(reason, 'unhandledrejection');
+  });
+
+  // Esponi anche su window.App per coerenza con codice esistente
+  window.App = window.App || {};
+  window.App.showError = window.showError;
+  window.App.showInfo  = window.showInfo;
+})();
+</script>

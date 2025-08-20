@@ -1,0 +1,21 @@
+{% extends "_base.html" %}
+{% block title %}Menu{% endblock %}
+{% block content %}
+{% set url_docs = safe_url('documents.documents_list', '/documents') %}
+{% set url_import = safe_url('importing.import_pdf', '/import-pdf') %}
+{% set url_ddtout = safe_url('importing.ddt_out_new', '/ddt-out/new') %}
+<div class="grid md:grid-cols-3 gap-4">
+  <a href="{{ url_docs }}" class="block border rounded-xl p-5 hover:shadow transition">
+    <div class="text-lg font-semibold">Archivio Documenti</div>
+    <div class="text-sm text-gray-600">DDT in/out, filtri e export</div>
+  </a>
+  <a href="{{ url_import }}" class="block border rounded-xl p-5 hover:shadow transition">
+    <div class="text-lg font-semibold">Importa DDT Fornitore (PDF)</div>
+    <div class="text-sm text-gray-600">Parsing + bozza DDT IN</div>
+  </a>
+  <a href="{{ url_ddtout }}" class="block border rounded-xl p-5 hover:shadow transition">
+    <div class="text-lg font-semibold">Nuovo DDT in Uscita</div>
+    <div class="text-sm text-gray-600">Compila e conferma</div>
+  </a>
+</div>
+{% endblock %}

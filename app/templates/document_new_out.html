@@ -1,0 +1,14 @@
+
+{% extends "_base.html" %}
+{% block content %}
+<h1>Nuovo DDT OUT</h1>
+<form method="post" action="{{ url_for('documents.new_out_save') }}">
+  <label>Data</label><input name="date" placeholder="gg/mm/aaaa" required>
+  <label>Numero</label><input name="number" required>
+  <label>Cliente</label>
+  <select name="partner_id">{% for p in partners %}<option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>{% endfor %}</select>
+  <label>Magazzino Origine</label>
+  <select name="warehouse_id">{% for w in warehouses %}<option value="{{ w.id }}">{{ w.code }} - {{ w.name }}</option>{% endfor %}</select>
+  <button class="btn">Crea</button>
+</form>
+{% endblock %}

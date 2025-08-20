@@ -1,0 +1,33 @@
+{% extends "_base.html" %}
+{% block title %}Menu - Magazzino Pro{% endblock %}
+
+{% block content %}
+<h1 class="text-3xl font-bold text-gray-900 mb-8 text-center">Menu Principale</h1>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+    <a href="{{ url_for('dashboard') }}" class="menu-card block bg-white p-6 rounded-lg shadow-md text-center">
+        <h2 class="text-2xl font-bold text-indigo-600">Dashboard</h2>
+        <p class="text-gray-600 mt-2">Panoramica e stato del magazzino.</p>
+    </a>
+    <a href="{{ url_for('articles') }}" class="menu-card block bg-white p-6 rounded-lg shadow-md text-center">
+        <h2 class="text-2xl font-bold text-indigo-600">Articoli</h2>
+        <p class="text-gray-600 mt-2">Gestisci il catalogo prodotti.</p>
+    </a>
+    <a href="{{ url_for('movements') }}" class="menu-card block bg-white p-6 rounded-lg shadow-md text-center">
+        <h2 class="text-2xl font-bold text-indigo-600">Movimenti</h2>
+        <p class="text-gray-600 mt-2">Visualizza e crea movimenti manuali.</p>
+    </a>
+    <a href="{{ url_for('documents') }}" class="menu-card block bg-white p-6 rounded-lg shadow-md text-center">
+        <h2 class="text-2xl font-bold text-indigo-600">Documenti</h2>
+        <p class="text-gray-600 mt-2">Gestisci i DDT in entrata e uscita.</p>
+    </a>
+    <a href="{{ url_for('inventory') }}" class="menu-card block bg-white p-6 rounded-lg shadow-md text-center">
+        <h2 class="text-2xl font-bold text-indigo-600">Inventario</h2>
+        <p class="text-gray-600 mt-2">Consulta le giacenze valorizzate.</p>
+    </a>
+    <a href="{{ url_for('settings') }}" class="menu-card block bg-white p-6 rounded-lg shadow-md text-center">
+        <h2 class="text-2xl font-bold text-indigo-600">Impostazioni</h2>
+        <p class="text-gray-600 mt-2">Configura magazzini e anagrafiche.</p>
+    </a>
+</div>
+{% endblock %}

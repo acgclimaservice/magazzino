@@ -1,0 +1,49 @@
+{% extends "_base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="grid md:grid-cols-3 gap-4">
+  <div class="bg-white p-4 rounded-xl shadow">
+    <div class="text-gray-500 text-sm">Movimenti oggi</div>
+    <div class="text-3xl font-semibold">{{ movimenti_oggi }}</div>
+  </div>
+  <div class="bg-white p-4 rounded-xl shadow">
+    <div class="text-gray-500 text-sm">Documenti in bozza</div>
+    <div class="text-3xl font-semibold">{{ documenti_in_bozza }}</div>
+  </div>
+  <div class="bg-white p-4 rounded-xl shadow">
+    <div class="text-gray-500 text-sm">Azioni rapide</div>
+    <div class="mt-2 flex flex-wrap gap-2">
+<a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ url_for('documents.documents_in') }}">Vai ai documenti</a>
+      <a class="px-3 py-2 rounded bg-emerald-600 text-white text-sm" href="{{ url_for('importing.import_pdf') }}">Importa PDF</a>
+    </div>
+  </div>
+</div>
+
+<div class="bg-white p-4 rounded-xl shadow mt-6">
+  <h2 class="font-semibold mb-3">Articoli sotto scorta</h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm border">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="p-2 text-left">Codice</th>
+          <th class="p-2 text-left">Descrizione</th>
+          <th class="p-2 text-right">Giacenza</th>
+          <th class="p-2 text-right">Scorta minima</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in articoli_sotto_scorta %}
+        <tr class="border-t">
+          <td class="p-2">{{ a.codice_interno }}</td>
+          <td class="p-2">{{ a.descrizione }}</td>
+          <td class="p-2 text-right">{{ a.giacenza_totale }}</td>
+          <td class="p-2 text-right">{{ a.qta_scorta_minima }}</td>
+        </tr>
+        {% else %}
+        <tr><td class="p-2 text-gray-500" colspan="4">Nessun articolo sotto scorta.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "_base.html" %}
+{% block title %}DDT OUT{% endblock %}
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow">
+  <div class="mb-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('documents.documents_in') }}" class="px-3 py-1 rounded bg-gray-200 text-gray-800">DDT IN</a>
+      <a href="{{ url_for('documents.documents_out') }}" class="px-3 py-1 rounded {{ 'bg-blue-600 text-white' if request.endpoint=='documents.documents_out' else 'bg-gray-200 text-gray-800' }}">DDT OUT</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{{ url_for('documents.new_in_form') }}" class="px-3 py-1 rounded border">Nuovo DDT IN</a>
+      <a href="{{ url_for('importing.import_pdf') }}" class="px-3 py-1 rounded bg-emerald-600 text-white">Importa DDT IN</a>
+      <a href="{{ url_for('importing.ddt_out_new') }}" class="px-3 py-1 rounded bg-indigo-600 text-white">Nuovo DDT OUT</a>
+    </div>
+  </div>
+  <div class="text-xs text-gray-500">Ordinati per n./anno (Anno ↓, Numero ↓)</div>
+
+  {% include "_documents_list_filters.html" %}
+  {% include "_documents_list_table_out.html" %}
+</div>
+{% endblock %}

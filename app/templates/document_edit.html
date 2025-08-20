@@ -1,0 +1,194 @@
+{% extends "_base.html" %}
+{% block title %}Modifica Documento #{{ doc.id }}{% endblock %}
+
+{% block content %}
+<div class="bg-white p-4 rounded-xl shadow">
+  <h1 class="text-lg font-semibold mb-3">Modifica Documento #{{ doc.id }} ({{ doc.tipo }})</h1>
+
+  <!-- Dettagli Documento -->
+  <div class="grid md:grid-cols-3 gap-4 text-sm mb-6 border-b pb-4">
+    <div><strong>Partner:</strong> {{ doc.partner.nome }}</div>
+    <div><strong>Magazzino:</strong> {{ doc.magazzino.nome }}</div>
+    <div><strong>Stato:</strong> <span class="font-mono text-xs px-2 py-1 rounded bg-gray-200">{{ doc.status }}</span></div>
+  </div>
+
+  <!-- Aggiunta Righe Articolo -->
+  <div class="mb-6">
+    <h2 class="font-semibold mb-2">Aggiungi Articolo</h2>
+    <div class="relative">
+      <input type="text" id="articleSearchInput" class="border rounded p-2 w-full" placeholder="Cerca per codice o descrizione...">
+      <div id="searchResults" class="absolute z-10 w-full bg-white border rounded mt-1 shadow-lg max-h-60 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- Tabella Righe -->
+  <h2 class="font-semibold mb-2">Righe Documento</h2>
+  <form id="documentRowsForm" method="post" action="{{ url_for('docops.save_rows', id=doc.id) }}">
+    <table class="w-full text-sm text-left">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="p-2">Codice</th>
+          <th class="p-2">Descrizione</th>
+          <th class="p-2">Quantità</th>
+          <th class="p-2">Prezzo</th>
+          <th class="p-2">Azioni</th>
+        </tr>
+      </thead>
+      <tbody id="rowsTableBody">
+        {% for riga in doc.righe %}
+        <tr data-row-id="{{ riga.id }}">
+          <td class="p-2"><input type="hidden" name="rows[{{ loop.index0 }}][articolo_id]" value="{{ riga.articolo_id }}">{{ riga.articolo.codice_interno or riga.articolo.codice_fornitore }}</td>
+          <td class="p-2"><input class="border rounded p-1 w-full" name="rows[{{ loop.index0 }}][descrizione]" value="{{ riga.descrizione }}"></td>
+          <td class="p-2"><input class="border rounded p-1 w-24" name="rows[{{ loop.index0 }}][quantita]" value="{{ riga.quantita|string|replace('.', ',') }}" type="text"></td>
+          <td class="p-2"><input class="border rounded p-1 w-24" name="rows[{{ loop.index0 }}][prezzo]" value="{{ riga.prezzo|string|replace('.', ',') }}" type="text"></td>
+          <td class="p-2"><button type="button" onclick="removeRow(this)" class="text-red-500 hover:text-red-700">Rimuovi</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    
+    <div class="mt-6 flex justify-between items-center">
+      <div>
+        <button type="submit" class="px-3 py-2 rounded bg-indigo-600 text-white">Salva Modifiche</button>
+        <a href="{{ url_for('documents.document_detail', id=doc.id) }}" class="ml-2 px-3 py-2 rounded border">Annulla</a>
+      </div>
+      <div>
+        <button type="button" onclick="confirmDocument()" class="px-3 py-2 rounded bg-green-600 text-white">Conferma e Movimenta</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rowIndex = {{ doc.righe|length }};
+
+// Funzione per mostrare errori (assicurati che esista nel tuo _base.html o app.js)
+function showError(message) {
+    const hud = document.getElementById('error-hud');
+    if (hud) {
+        hud.textContent = message;
+        hud.classList.remove('hidden');
+        setTimeout(() => hud.classList.add('hidden'), 4000);
+    } else {
+        alert(message); // Fallback
+    }
+}
+
+// Funzione di ricerca articoli (SEMPLIFICATA)
+async function searchAndShowArticles(query) {
+    const resultsContainer = document.getElementById('searchResults');
+    const magId = '{{ doc.magazzino_id }}'; // Prende il magazzino dal documento
+    
+    if (!query || query.length < 2) {
+        resultsContainer.innerHTML = '';
+        return;
+    }
+    
+    resultsContainer.innerHTML = '<div class="p-2 text-gray-500">Ricerca in corso...</div>';
+
+    try {
+        const url = `/api/inventory/search?q=${encodeURIComponent(query)}&magazzino_id=${magId}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        // Debug: log della risposta per capire il problema
+        console.log('Risposta ricevuta:', data);
+
+        // LOGICA SEMPLIFICATA: se non è un array, probabilmente è un errore
+        if (!Array.isArray(data)) {
+            // Se ha un campo error, mostra quello
+            if (data && data.error) {
+                throw new Error(data.error);
+            }
+            // Altrimenti errore generico
+            throw new Error('Risposta non valida dal server');
+        }
+        
+        resultsContainer.innerHTML = '';
+
+        if (data.length === 0) {
+            resultsContainer.innerHTML = '<div class="p-2 text-gray-500">Nessun articolo trovato.</div>';
+            return;
+        }
+
+        data.forEach(art => {
+            const item = document.createElement('a');
+            item.href = '#';
+            item.className = 'block p-2 border-b hover:bg-gray-100 text-sm';
+            item.innerHTML = `
+                <div class="font-semibold">${art.codice_interno || art.codice_fornitore || 'N/A'} - ${art.descrizione || 'N/A'}</div>
+                <div class="text-xs text-gray-500">Giacenza: ${art.giacenza || 0} | Ultimo costo: ${(art.last_cost || 0).toFixed(2)} €</div>
+            `;
+            
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                addRowToTable(art);
+                document.getElementById('articleSearchInput').value = '';
+                resultsContainer.innerHTML = '';
+            });
+            resultsContainer.appendChild(item);
+        });
+
+    } catch (err) {
+        console.error("Errore completo:", err);
+        showError(err.message);
+        resultsContainer.innerHTML = `<div class="p-2 text-red-500">Errore: ${err.message}</div>`;
+    }
+}
+
+// Funzione per aggiungere una riga alla tabella (CORRETTA)
+function addRowToTable(art) {
+    const tableBody = document.getElementById('rowsTableBody');
+    const newRow = document.createElement('tr');
+    
+    const prezzo = (art.last_cost || 0).toFixed(2).replace('.', ',');
+    const quantita = '1,00';
+
+    newRow.innerHTML = `
+        <td class="p-2"><input type="hidden" name="rows[${rowIndex}][articolo_id]" value="${art.id}">${art.codice_interno || art.codice_fornitore || 'N/A'}</td>
+        <td class="p-2"><input class="border rounded p-1 w-full" name="rows[${rowIndex}][descrizione]" value="${art.descrizione || ''}"></td>
+        <td class="p-2"><input class="border rounded p-1 w-24" name="rows[${rowIndex}][quantita]" value="${quantita}" type="text"></td>
+        <td class="p-2"><input class="border rounded p-1 w-24" name="rows[${rowIndex}][prezzo]" value="${prezzo}" type="text"></td>
+        <td class="p-2"><button type="button" onclick="removeRow(this)" class="text-red-500 hover:text-red-700">Rimuovi</button></td>
+    `;
+    tableBody.appendChild(newRow);
+    rowIndex++;
+}
+
+// Funzione per rimuovere una riga
+function removeRow(button) {
+    button.closest('tr').remove();
+}
+
+// Funzione per confermare il documento
+async function confirmDocument() {
+    if (!confirm('Sei sicuro di voler confermare il documento e movimentare il magazzino? L\'operazione non è reversibile.')) {
+        return;
+    }
+    try {
+        const resp = await fetch('{{ url_for("docops.confirm_doc", id=doc.id) }}', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            window.location.href = data.redirect_url;
+        } else {
+            showError(data.error || 'Errore durante la conferma.');
+        }
+    } catch (err) {
+        showError('Errore di rete durante la conferma.');
+    }
+}
+
+// Event listener per l'input di ricerca
+document.getElementById('articleSearchInput').addEventListener('input', (e) => {
+    // Semplice debounce per non fare una chiamata ad ogni tasto premuto
+    clearTimeout(window.searchTimeout);
+    window.searchTimeout = setTimeout(() => {
+        searchAndShowArticles(e.target.value);
+    }, 300);
+});
+
+</script>
+{% endblock %>

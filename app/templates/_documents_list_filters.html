@@ -1,0 +1,25 @@
+<form method="get" action="" class="mb-3 grid md:grid-cols-5 gap-2">
+  <input name="q" value="{{ request.args.get('q','') }}" placeholder="Cerca..." class="border rounded p-2">
+  <input type="date" name="from_date" value="{{ request.args.get('from_date','') }}" class="border rounded p-2">
+  <input type="date" name="to_date" value="{{ request.args.get('to_date','') }}" class="border rounded p-2">
+  <select name="status" class="border rounded p-2">
+    {% set s = request.args.get('status','') %}
+    <option value="">Tutti gli stati</option>
+    <option value="Bozza" {{ 'selected' if s=='Bozza' else '' }}>Bozza</option>
+    <option value="Confermato" {{ 'selected' if s=='Confermato' else '' }}>Confermato</option>
+    <option value="Stornato" {{ 'selected' if s=='Stornato' else '' }}>Stornato</option>
+    <option value="Annullato" {{ 'selected' if s=='Annullato' else '' }}>Annullato</option>
+  </select>
+  
+  {% if show_commessa_filter and commesse %}
+  <select name="commessa_id" class="border rounded p-2">
+    {% set csel = request.args.get('commessa_id') %}
+    <option value="">Tutte le commesse</option>
+    {% for c in commesse %}
+      <option value="{{ c.id }}" {{ 'selected' if csel and (csel|int)==c.id else '' }}>{{ c.nome }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+
+  <button class="px-3 py-2 rounded bg-gray-800 text-white">Filtra</button>
+</form>
