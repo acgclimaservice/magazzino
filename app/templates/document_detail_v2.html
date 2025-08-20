@@ -32,7 +32,10 @@
     <h3 class="font-semibold mb-2">Aggiungi Articolo</h3>
     <div class="p-2 border rounded-md bg-gray-50 mb-4">
         <label class="block text-xs text-gray-600">Cerca articolo esistente per pre-compilare i campi</label>
-        <input id="add-line-search" type="text" class="border rounded p-2 w-full text-sm" placeholder="Cerca per codice o descrizione...">
+        <div class="relative">
+          <input id="add-line-search" type="text" class="border rounded p-2 w-full text-sm" placeholder="Cerca per codice o descrizione...">
+          <div id="search-dropdown" class="absolute z-10 w-full bg-white border rounded mt-1 shadow-lg max-h-60 overflow-y-auto" style="display: none;"></div>
+        </div>
     </div>
     <form id="add-line-form" class="space-y-3">
         <input id="add-line-articolo-id" type="hidden">
@@ -211,26 +214,82 @@
     });
   });
 
-  // --- AUTOCOMPLETE & SETUP INIZIALE ---
+  // --- AUTOCOMPLETE CORRETTO CON DROPDOWN ---
   var searchInput = document.getElementById('add-line-search');
+  var searchDropdown = document.getElementById('search-dropdown');
   var searchTimer;
+
   searchInput.addEventListener('input', function() {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(function() {
           var query = searchInput.value;
-          if (query.length < 2) return;
-          apiCall('/api/articles/search?q=' + encodeURIComponent(query)).then(function(results) {
-              // Semplice pre-compilazione del primo risultato per ora
-              if (results && results.length > 0) {
-                  var art = results[0];
-                  document.getElementById('add-line-articolo-id').value = art.id;
-                  document.getElementById('add-line-cod-int').value = art.codice_interno || '';
-                  document.getElementById('add-line-cod-forn').value = art.codice_fornitore || '';
-                  document.getElementById('add-line-desc').value = art.descrizione || '';
-                  document.getElementById('add-line-price').value = art.last_cost || 0;
-              }
-          });
+          console.log('🔍 Ricerca corretta:', query);
+          
+          if (query.length < 2) {
+              searchDropdown.style.display = 'none';
+              return;
+          }
+          
+          searchDropdown.innerHTML = '<div style="padding: 10px; color: #666;">Ricerca in corso...</div>';
+          searchDropdown.style.display = 'block';
+          
+          // ENDPOINT CORRETTO + DROPDOWN
+          var magId = docData && docData.magazzino_id ? docData.magazzino_id : 1;
+          var url = '/api/inventory/search?q=' + encodeURIComponent(query) + '&magazzino_id=' + magId;
+          
+          fetch(url)
+              .then(function(response) { return response.json(); })
+              .then(function(results) {
+                  console.log('📦 Risultati trovati:', results);
+                  searchDropdown.innerHTML = '';
+                  
+                  if (!results || results.length === 0) {
+                      searchDropdown.innerHTML = '<div style="padding: 10px; color: #999;">Nessun articolo trovato.</div>';
+                      return;
+                  }
+                  
+                  results.forEach(function(art) {
+                      var item = document.createElement('div');
+                      item.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;';
+                      item.innerHTML = 
+                          '<div style="font-weight: bold; color: #333;">' + (art.codice_interno || art.codice_fornitore || 'N/A') + ' - ' + (art.descrizione || 'N/A') + '</div>' +
+                          '<div style="font-size: 12px; color: #666;">Giacenza: ' + (art.giacenza || 0) + ' | Ultimo costo: ' + ((art.last_cost || 0).toFixed(2)) + ' €</div>';
+                      
+                      item.onmouseover = function() { this.style.backgroundColor = '#f3f4f6'; };
+                      item.onmouseout = function() { this.style.backgroundColor = ''; };
+                      
+                      item.onclick = function() {
+                          console.log('🎯 Articolo selezionato:', art);
+                          
+                          // PRE-COMPILA I CAMPI CON DATI CORRETTI
+                          document.getElementById('add-line-articolo-id').value = art.articolo_id || art.id;
+                          document.getElementById('add-line-cod-int').value = art.codice_interno || '';
+                          document.getElementById('add-line-cod-forn').value = art.codice_fornitore || '';
+                          document.getElementById('add-line-desc').value = art.descrizione || '';
+                          document.getElementById('add-line-price').value = (art.last_cost || 0).toFixed(2);
+                          
+                          // PULISCI E CHIUDI
+                          searchInput.value = '';
+                          searchDropdown.style.display = 'none';
+                          
+                          console.log('✅ Campi pre-compilati!');
+                      };
+                      
+                      searchDropdown.appendChild(item);
+                  });
+              })
+              .catch(function(err) {
+                  console.error('❌ Errore ricerca:', err);
+                  searchDropdown.innerHTML = '<div style="padding: 10px; color: #dc2626;">Errore di ricerca</div>';
+              });
       }, 300);
+  });
+
+  // Chiudi dropdown quando clicchi fuori
+  document.addEventListener('click', function(e) {
+      if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+          searchDropdown.style.display = 'none';
+      }
   });
 
   function loadMastrini() {
