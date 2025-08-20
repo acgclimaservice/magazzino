@@ -172,10 +172,15 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 });
 
 async function loadLookups() {
-  const [mag, mastr] = await Promise.all([
+  const [magResponse, mastrResponse] = await Promise.all([
     getJSON('/api/magazzini'),
     getJSON('/api/mastrini?tipo=RICAVO')
   ]);
+  
+  // Supporta nuovo formato {ok: true, data: [...]} e vecchio [...]
+  const mag = magResponse.data || magResponse;
+  const mastr = mastrResponse.data || mastrResponse;
+  
   // magazzini
   const sel = document.getElementById('sel-magazzino');
   sel.innerHTML = '';
