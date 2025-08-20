@@ -119,7 +119,8 @@ async function postJSON(url, data) {
 
 // Load selects
 async function loadMagazzini() {
-  const rows = await getJSON('/api/magazzini');
+  const response = await getJSON('/api/magazzini');
+  const rows = response.data || response; // Supporta nuovo formato {ok: true, data: [...]} e vecchio [...]
   const sel = document.getElementById('sel-magazzino');
   sel.innerHTML = '';
   for (const m of rows) {
@@ -130,7 +131,8 @@ async function loadMagazzini() {
   }
 }
 async function loadClienti() {
-  const rows = await getJSON('/api/clienti');
+  const response = await getJSON('/api/clienti');
+  const rows = response.data || response; // Supporta nuovo formato {ok: true, data: [...]} e vecchio [...]
   const sel = document.getElementById('sel-commessa');
   sel.innerHTML = '';
   const optNone = document.createElement('option');
@@ -145,7 +147,8 @@ async function loadClienti() {
   }
 }
 async function loadMastrini() {
-  mastriniList = await getJSON('/api/mastrini?tipo=ACQUISTO');
+  const response = await getJSON('/api/mastrini?tipo=ACQUISTO');
+  mastriniList = response.data || response; // Supporta nuovo formato {ok: true, data: [...]} e vecchio [...]
 }
 
 // Util: select HTML for mastrino
