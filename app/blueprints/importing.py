@@ -1,4 +1,5 @@
 from ..services.parsing_service import parse_ddt_with_fallback
+from ..services.supplier_parsers import parse_supplier_specific
 from flask import Blueprint, render_template, request, jsonify, url_for, current_app, send_from_directory, abort
 from sqlalchemy.exc import IntegrityError
 from decimal import Decimal, InvalidOperation
@@ -7,6 +8,7 @@ from ..extensions import db
 from ..models import Articolo, Magazzino, Partner, Documento, RigaDocumento, Movimento, Mastrino, Allegato
 from ..utils import parse_it_date, q_dec, money_dec, next_doc_number, unify_um, supplier_prefix, gen_internal_code
 from ..services.parsing_service import extract_text_from_pdf, build_prompt, call_gemini, parse_ddt_with_fallback, parse_ddt_duotermica
+from ..services.supplier_parsers import parse_supplier_specific
 from ..services.file_service import save_upload, move_upload_to_document
 import os, re
 
@@ -113,7 +115,8 @@ def api_parse_ddt():
         file.stream.seek(0)
         rel_path, abs_path = save_upload(file, category="incoming_ddt")
 
-        data, method, note = parse_ddt_with_fallback(raw_text)
+        data, method = parse_supplier_specific(raw_text)
+        note = method
 
         resp = {"ok": True, "type": "ddt", "data": data, "uploaded_file": rel_path, "method": method}
         if note:

@@ -117,6 +117,7 @@
                               '<button id="btn-confirm" class="px-3 py-2 rounded bg-emerald-600 text-white text-sm">Conferma DDT</button>';
     } else if (docData.status === 'Confermato') {
        actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="/files/export-document/' + docId + '.pdf">Esporta PDF</a>';
+        if (docData.allegati_count > 0) actionsBar.innerHTML += '<a href="/documents/' + docId + '/export-combined-pdf" class="ml-2 px-3 py-1 rounded bg-orange-600 text-white text-sm">📄 PDF Completo</a>';
         if (docData.tipo === 'DDT_IN') actionsBar.innerHTML += '<a href="/documents/' + docId + '/duplicate-to-out" class="ml-2 px-3 py-1 rounded bg-purple-600 text-white text-sm">🔄 Duplica come DDT OUT</a>';
     }
     actionsBar.innerHTML += '<a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="' + documentsUrl + '">Torna all\'archivio</a>';

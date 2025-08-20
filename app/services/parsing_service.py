@@ -82,7 +82,8 @@ def build_prompt(kind: str, raw_text: str) -> str:
     schema = {
         "ddt": (
             "Restituisci un JSON compatto con le chiavi:\n"
-            "- data: data del DDT nel formato YYYY-MM-DD\n"
+            "- data: data del DDT nel formato YYYY-MM-DD\n" +
+        "- numero_ddt: numero del DDT fornitore\n"
             "- fornitore: ragione sociale\n"
             "- righe: lista di oggetti con:\n"
             "  - codice: codice articolo del fornitore (stringa, anche alfanumerica)\n"

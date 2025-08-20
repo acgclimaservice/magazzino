@@ -229,3 +229,63 @@ def duplicate_to_out_save(id: int):
         db.session.rollback()
         flash(f"Errore duplicazione: {e}", "error")
         return redirect(url_for('documents.document_detail', id=id))
+
+@documents_bp.get("/<int:id>/export-combined-pdf")
+def export_combined_pdf(id: int):
+    """Esporta DDT + documento originale in PDF unico."""
+    try:
+        from io import BytesIO
+        from flask import send_file, make_response, current_app
+        import pypdf
+        
+        doc = Documento.query.get_or_404(id)
+        
+        # Genera PDF del DDT corrente
+        from ..services.pdf_export import export_document_pdf
+        ddt_pdf = export_document_pdf(doc)
+        
+        # Trova documento originale
+        original_pdf = None
+        if doc.tipo == 'DDT_IN' and doc.allegati:
+            # DDT IN: cerca PDF allegato
+            for allegato in doc.allegati:
+                if allegato.mime == 'application/pdf':
+                    import os
+                    abs_path = os.path.join(current_app.root_path, allegato.path)
+                    if os.path.exists(abs_path):
+                        with open(abs_path, 'rb') as f:
+                            original_pdf = f.read()
+                        break
+        elif doc.tipo == 'DDT_OUT' and hasattr(doc, 'documento_origine_id'):
+            # DDT OUT: esporta DDT IN originale
+            doc_in = Documento.query.get(doc.documento_origine_id)
+            if doc_in:
+                original_pdf = export_document_pdf(doc_in)
+        
+        if not original_pdf:
+            # Solo DDT corrente
+            response = make_response(ddt_pdf)
+        else:
+            # Unisci PDF
+            merger = pypdf.PdfWriter()
+            
+            # Aggiungi DDT corrente
+            merger.append(BytesIO(ddt_pdf))
+            
+            # Aggiungi originale
+            merger.append(BytesIO(original_pdf))
+            
+            # Output finale
+            output = BytesIO()
+            merger.write(output)
+            output.seek(0)
+            
+            response = make_response(output.read())
+        
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename="DDT_{doc.id}_completo.pdf"'
+        return response
+        
+    except Exception as e:
+        flash(f"Errore export PDF: {e}", "error")
+        return redirect(url_for('documents.document_detail', id=id))

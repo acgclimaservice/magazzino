@@ -33,6 +33,7 @@
 
   <!-- Metodo nota -->
   <div id="ddt-note" class="hidden text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2"></div>
+  <div id="parsing-method" class="hidden text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded p-2 mt-2"></div>
 
   <!-- STEP 2: Editable Meta -->
   <div id="meta-box" class="hidden grid md:grid-cols-3 gap-4 text-sm">
@@ -268,8 +269,5 @@ async function callClear(url) {
     hideLoading();
   }
 }
-document.getElementById('btn-clear-in').addEventListener('click', () => callClear('/test/clear-ddt-in'));
-document.getElementById('btn-clear-out').addEventListener('click', () => callClear('/test/clear-ddt-out'));
-document.getElementById('btn-clear-art').addEventListener('click', () => callClear('/test/clear-articles'));
 </script>
 {% endblock %}

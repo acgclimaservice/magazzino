@@ -126,6 +126,16 @@ def api_document_json(id: int):
             "allegati": allegati
         }
         
+        # Aggiungi allegati alla response
+        allegati_data = []
+        for allegato in doc.allegati:
+            allegati_data.append({
+                "id": allegato.id,
+                "filename": allegato.filename,
+                "url": f"/files/download/{allegato.id}"
+            })
+        doc_out["allegati"] = allegati_data
+        doc_out["allegati_count"] = len(allegati_data)
         return jsonify({"ok": True, "doc": doc_out})
 
     except Exception as e:
