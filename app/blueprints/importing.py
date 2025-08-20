@@ -208,8 +208,7 @@ def import_ddt_confirm():
         for r in righe:
             sup_code = (r.get('codice') or '').strip()
             descr = (r.get('descrizione') or '').strip() or sup_code or "Articolo"
-           # NUOVO CODICE
-qty_raw = r.get('quantità') or r.get('quantitÃ ') or r.get('quantita') or r.get('qty')
+            qty_raw = r.get('quantitÃ ') if 'quantitÃ ' in r else r.get('quantita') if 'quantita' in r else r.get('qty')
             um = unify_um(r.get('um'))
             qty_dec = _to_decimal(qty_raw) or Decimal('0')
             unit_price = _extract_unit_price(r, qty_dec)
