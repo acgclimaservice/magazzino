@@ -349,17 +349,9 @@ def api_ddt_out_create():
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 
-# ===== Endpoints supporto (combo) =====
-@importing_bp.route("/api/magazzini")
-def api_magazzini():
-    rows = Magazzino.query.order_by(Magazzino.codice).all()
-    return jsonify([{"id": m.id, "codice": m.codice, "nome": m.nome} for m in rows])
-
-
-@importing_bp.route("/api/clienti")
-def api_clienti():
-    rows = Partner.query.filter_by(tipo='Cliente').order_by(Partner.nome).all()
-    return jsonify([{"id": c.id, "nome": c.nome} for c in rows])
+# ===== ENDPOINT /api/magazzini RIMOSSO - Era duplicato! =====
+# ===== ENDPOINT /api/clienti RIMOSSO - Era duplicato! =====
+# Ora usa solo quelli veri in lookups.py con formato {"ok": True, "data": [...]}
 
 # ===== ENDPOINT /api/mastrini RIMOSSO - Era duplicato! =====
 # Ora usa solo quello vero in lookups.py
