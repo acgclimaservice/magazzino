@@ -32,7 +32,7 @@ def _to_decimal(x):
             return Decimal(str(x))
         except Exception:
             return None
-    s = str(x).strip().replace('€','').replace('\\xa0','').replace(' ', '').replace(',', '.')
+    s = str(x).strip().replace('â‚¬','').replace('\\xa0','').replace(' ', '').replace(',', '.')
     m = re.search(r'[-+]?\\d+(?:\\.\\d+)?', s)
     if not m:
         return None
@@ -208,12 +208,12 @@ def import_ddt_confirm():
         for r in righe:
             sup_code = (r.get('codice') or '').strip()
             descr = (r.get('descrizione') or '').strip() or sup_code or "Articolo"
-            qty_raw = r.get('quantità') if 'quantità' in r else r.get('quantita') if 'quantita' in r else r.get('qty')
+            qty_raw = r.get('quantitÃ ') if 'quantitÃ ' in r else r.get('quantita') if 'quantita' in r else r.get('qty')
             um = unify_um(r.get('um'))
             qty_dec = _to_decimal(qty_raw) or Decimal('0')
             unit_price = _extract_unit_price(r, qty_dec)
             if qty_raw in (None, ''):
-                raise ValueError(f"Quantità mancante per riga con codice fornitore '{sup_code or 'N/A'}'")
+                raise ValueError(f"QuantitÃ  mancante per riga con codice fornitore '{sup_code or 'N/A'}'")
 
             mastrino_row = (r.get('mastrino_codice') or '').strip() or mastrino_default
 
@@ -305,12 +305,12 @@ def api_ddt_out_create():
             try:
                 codice = (r.get('codice') or '').strip()
                 descr = (r.get('descrizione') or '').strip() or codice or 'Articolo'
-                qty_raw = r.get('quantità') if 'quantità' in r else r.get('quantita') if 'quantita' in r else r.get('qty')
+                qty_raw = r.get('quantitÃ ') if 'quantitÃ ' in r else r.get('quantita') if 'quantita' in r else r.get('qty')
                 if qty_raw in (None, ''):
-                    raise ValueError("Quantità mancante")
+                    raise ValueError("QuantitÃ  mancante")
 
                 um = unify_um(r.get('um'))
-                qty_dec = q_dec(str(qty_raw), field="Quantità")
+                qty_dec = q_dec(str(qty_raw), field="QuantitÃ ")
                 price = _extract_unit_price(r, qty_dec)
 
                 mastrino_row = (r.get('mastrino_codice') or '').strip() or default_m
@@ -361,14 +361,8 @@ def api_clienti():
     rows = Partner.query.filter_by(tipo='Cliente').order_by(Partner.nome).all()
     return jsonify([{"id": c.id, "nome": c.nome} for c in rows])
 
-@importing_bp.route("/api/mastrini")
-def api_mastrini():
-    tipo = (request.args.get("tipo") or "").upper()
-    q = Mastrino.query
-    if tipo in ("ACQUISTO", "RICAVO"):
-        q = q.filter_by(tipo=tipo)
-    rows = q.order_by(Mastrino.codice).all()
-    return jsonify([{"codice": m.codice, "descrizione": m.descrizione, "tipo": m.tipo} for m in rows])
+# ===== ENDPOINT /api/mastrini RIMOSSO - Era duplicato! =====
+# Ora usa solo quello vero in lookups.py
 
 # ===== Rotte di test (clear) =====
 def _clear_docs_by_type(tipo: str):
