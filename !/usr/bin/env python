@@ -1,0 +1,268 @@
+#!/usr/bin/env python
+"""
+Script di migrazione a Magazzino Pro 1.3.1 (versione migliorata)
+Esegui questo script per aggiornare la struttura del progetto.
+"""
+
+import os
+import shutil
+import sys
+from pathlib import Path
+from datetime import datetime
+
+def backup_file(file_path):
+    """Crea backup di un file"""
+    if os.path.exists(file_path):
+        backup_path = f"{file_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        shutil.copy2(file_path, backup_path)
+        print(f"✓ Backup creato: {backup_path}")
+        return backup_path
+    return None
+
+def create_directory(dir_path):
+    """Crea directory se non esiste"""
+    Path(dir_path).mkdir(parents=True, exist_ok=True)
+    print(f"✓ Directory creata/verificata: {dir_path}")
+
+def write_file(file_path, content):
+    """Scrive contenuto in un file"""
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    print(f"✓ File creato/aggiornato: {file_path}")
+
+def main():
+    print("=" * 60)
+    print("MIGRAZIONE MAGAZZINO PRO 1.3 → 1.3.1")
+    print("=" * 60)
+    
+    # 1. Verifica struttura base
+    if not os.path.exists('app'):
+        print("❌ Directory 'app' non trovata. Sei nella root del progetto?")
+        return 1
+    
+    # 2. Backup file critici
+    print("\n📦 Creazione backup...")
+    backup_file('app/__init__.py')
+    backup_file('app.py')
+    backup_file('.env')
+    backup_file('requirements.txt')
+    
+    # 3. Crea nuove directory
+    print("\n📁 Creazione strutture...")
+    create_directory('logs')
+    create_directory('tests')
+    create_directory('instance/uploads/documents')
+    create_directory('instance/uploads/incoming_ddt')
+    create_directory('app/services')
+    
+    # 4. Crea file .env.example aggiornato
+    env_example = """# Magazzino Pro 1.3.1 - Configurazione
+# Copia questo file in .env e personalizza i valori
+
+# Flask
+FLASK_ENV=development
+FLASK_APP=run.py
+SECRET_KEY=your-secret-key-here-change-in-production
+
+# Database
+DATABASE_URL=sqlite:///instance/magazzino.db
+# Per PostgreSQL: postgresql://user:pass@localhost/dbname
+
+# Upload
+UPLOAD_FOLDER=instance/uploads
+MAX_CONTENT_LENGTH_MB=32
+
+# API Keys (per parsing PDF)
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-1.5-flash
+
+# LLM Settings
+LLM_TIMEOUT_SECONDS=60
+LLM_MAX_RETRIES=3
+LLM_MIN_INTERVAL_SECONDS=1.2
+
+# Email (produzione)
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USE_TLS=1
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
+ADMIN_EMAIL=admin@yourdomain.com
+"""
+    write_file('.env.example', env_example)
+    
+    # 5. Requirements completo
+    requirements = """# Core
+Flask>=2.3.0
+Flask-SQLAlchemy>=3.1.0
+SQLAlchemy>=2.0.0
+python-dotenv>=1.0.0
+
+# Database
+alembic>=1.13.0
+Flask-Migrate>=4.0.0
+
+# Forms & Security
+Flask-WTF>=1.2.0
+WTForms>=3.1.0
+
+# PDF Processing
+pypdf>=4.0.0
+reportlab>=4.0.0
+PyPDF2>=3.0.0
+
+# API & Parsing
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Data Processing (opzionale ma consigliato)
+pandas>=2.1.0
+openpyxl>=3.1.0
+
+# Testing
+pytest>=7.4.0
+pytest-flask>=1.3.0
+pytest-cov>=4.1.0
+
+# Production
+gunicorn>=21.2.0
+redis>=5.0.0  # Per caching futuro
+
+# Development
+flask-debugtoolbar>=0.14.0
+black>=23.12.0
+flake8>=6.1.0
+"""
+    write_file('requirements.txt', requirements)
+    
+    # 6. Crea pytest.ini
+    pytest_ini = """[pytest]
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+addopts = -v --tb=short --strict-markers --cov=app --cov-report=term-missing
+env_file = .env.test
+"""
+    write_file('pytest.ini', pytest_ini)
+    
+    # 7. Crea .gitignore aggiornato
+    gitignore = """# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Flask
+instance/
+.webassets-cache
+.env
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Uploads
+uploads/
+instance/uploads/
+
+# Backup
+*.backup_*
+*.bak
+
+# Build
+dist/
+build/
+*.egg-info/
+"""
+    write_file('.gitignore', gitignore)
+    
+    # 8. Rimuovi app.py dalla root se esiste
+    if os.path.exists('app.py'):
+        print("\n⚠️  ATTENZIONE: app.py trovato nella root")
+        response = input("Vuoi rimuoverlo? (è già stato fatto il backup) [s/N]: ")
+        if response.lower() == 's':
+            os.remove('app.py')
+            print("✓ app.py rimosso dalla root")
+    
+    # 9. Crea script di avvio per Windows
+    run_bat = """@echo off
+echo Starting Magazzino Pro 1.3.1...
+set FLASK_APP=run.py
+set FLASK_ENV=development
+flask run --host=0.0.0.0 --port=5000
+pause
+"""
+    write_file('run.bat', run_bat)
+    
+    # 10. Crea script di avvio per Linux/Mac
+    run_sh = """#!/bin/bash
+echo "Starting Magazzino Pro 1.3.1..."
+export FLASK_APP=run.py
+export FLASK_ENV=development
+flask run --host=0.0.0.0 --port=5000
+"""
+    write_file('run.sh', run_sh)
+    os.chmod('run.sh', 0o755)  # Rendi eseguibile
+    
+    # 11. Crea template 403.html mancante
+    error_403 = """{% extends "_base.html" %}
+{% block title %}Accesso Negato{% endblock %}
+{% block content %}
+<div class="bg-white p-6 rounded-xl shadow text-center">
+  <h1 class="text-2xl font-semibold mb-2">403 — Accesso Negato</h1>
+  <p class="text-sm text-gray-600">Non hai i permessi per accedere a questa risorsa.</p>
+  <div class="mt-4">
+    <a class="text-blue-700 hover:underline" href="{{ url_for('core.menu') }}">Torna al menu</a>
+  </div>
+</div>
+{% endblock %}
+"""
+    write_file('app/templates/errors/403.html', error_403)
+    
+    print("\n" + "=" * 60)
+    print("✅ MIGRAZIONE COMPLETATA!")
+    print("=" * 60)
+    
+    print("\n📋 PROSSIMI PASSI:")
+    print("1. Installa le dipendenze aggiornate:")
+    print("   pip install -r requirements.txt")
+    print("\n2. Copia i file migliorati forniti nei rispettivi percorsi:")
+    print("   - app/services/file_service.py")
+    print("   - app/config.py")
+    print("   - app/__init__.py (nuovo)")
+    print("   - tests/test_app.py")
+    print("\n3. Aggiorna il tuo .env con i nuovi parametri")
+    print("\n4. Esegui i test:")
+    print("   pytest")
+    print("\n5. Inizializza/migra il database:")
+    print("   flask db init  # Solo se usi Alembic")
+    print("   flask init-db")
+    print("   flask seed-db")
+    print("\n6. Avvia l'applicazione:")
+    print("   python run.py  # o ./run.sh su Linux/Mac")
+    
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())
