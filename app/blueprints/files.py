@@ -34,6 +34,22 @@ def export_document(doc_id: int):
     response.headers['Content-Disposition'] = f'inline; filename=doc_{doc.id}.pdf'
     return response
 
+@files_bp.route('/debug/<int:allegato_id>')
+def debug_allegato(allegato_id: int):
+    allegato = Allegato.query.get_or_404(allegato_id)
+    abs_path = os.path.join(current_app.root_path, allegato.path)
+    
+    return {
+        'allegato_id': allegato_id,
+        'filename': allegato.filename,
+        'path_db': allegato.path,
+        'path_completo': abs_path,
+        'file_esiste': os.path.exists(abs_path),
+        'root_path': current_app.root_path,
+        'directory': os.path.dirname(abs_path),
+        'basename': os.path.basename(abs_path)
+    }
+
 # Route aggiuntiva per vedere il PDF nel browser invece di scaricarlo
 @files_bp.route('/view/<int:allegato_id>')
 def view_attachment(allegato_id: int):
