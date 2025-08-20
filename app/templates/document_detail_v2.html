@@ -235,15 +235,17 @@
 
   function loadMastrini() {
       var tipoMastrino = (docData && docData.tipo === 'DDT_OUT') ? 'RICAVO' : 'ACQUISTO';
-      apiCall('/api/mastrini?tipo=' + tipoMastrino).then(function(mastrini) {
+      apiCall('/api/mastrini?tipo=' + tipoMastrino).then(function(response) {
           var sel = document.getElementById('add-line-mastrino');
           sel.innerHTML = '';
-          mastrini.forEach(function(m) {
-              var opt = document.createElement('option');
-              opt.value = m.codice;
-              opt.textContent = m.codice + ' - ' + m.descrizione;
-              sel.appendChild(opt);
-          });
+          if (response.data && Array.isArray(response.data)) {
+              response.data.forEach(function(m) {
+                  var opt = document.createElement('option');
+                  opt.value = m.codice;
+                  opt.textContent = m.codice + ' - ' + m.descrizione;
+                  sel.appendChild(opt);
+              });
+          }
       });
   }
 
