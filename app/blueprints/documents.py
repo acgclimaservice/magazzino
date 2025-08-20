@@ -73,7 +73,7 @@ def documents_out():
 def document_detail(id: int):
     # Usa il template v2 che contiene la logica JS
     doc = Documento.query.get_or_404(id)
-    return render_template("document_detail_v2.html", doc=doc)
+  return render_template("document_detail.html", doc=doc)
 
 # --- Creazione Manuale DDT IN ---
 @documents_bp.get("/documents/new-in")
