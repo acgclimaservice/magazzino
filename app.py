@@ -806,9 +806,10 @@ def api_mastrini():
 def import_ddt_confirm():
     try:
         payload = request.get_json(force=True)
-        data_str = required(payload.get("data"), "Data")
         fornitore_nome = required(payload.get("fornitore"), "Fornitore")
-        mastrino_codice = (payload.get("mastrino_codice") or "").strip()
+        righe = payload.get("righe") or []
+        if not righe:
+            return jsonify({"ok": False, "error": "Nessuna riga fornita"}), 400
         righe = payload.get("righe") or []
         if not righe:
             return jsonify({"ok": False, "error": "Nessuna riga fornita"}), 400

@@ -187,6 +187,7 @@ def api_confirm_document(id: int):
                 mv = Movimento(
                     data=doc.data,
                     articolo_id=r.articolo_id,
+                    quantita=q,
                     tipo="carico",
                     magazzino_arrivo_id=doc.magazzino_id,
                     documento_id=doc.id,

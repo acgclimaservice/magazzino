@@ -157,7 +157,7 @@ class DDTImportManager {
             this.loadingOverlay.show('Estrazione dati dal PDF in corso…');
             
             // Step 1: Parse PDF (nuovo endpoint)
-            this.parsedDDT = await this.apiClient.postForm('/api/import/ddt/parse', formData);
+            this.parsedDDT = await this.apiClient.postForm('/importing/api/parse-ddt', formData);
             
             // Show parsing method note
             this.showParsingNote(this.parsedDDT);
@@ -430,3 +430,23 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = DDTImportManager;
 }
+// Gestione campi numero e data DDT fornitore
+document.addEventListener('DOMContentLoaded', function() {
+    const originalPopulate = window.populateFields;
+    
+    window.populateFields = function(previewState) {
+        if (originalPopulate) originalPopulate(previewState);
+        
+        // Popola numero DDT
+        const numeroField = document.getElementById('fld-numero-ddt');
+        if (numeroField && previewState.numero) {
+            numeroField.value = previewState.numero;
+        }
+        
+        // Popola data DDT
+        const dataField = document.getElementById('fld-data-ddt');
+        if (dataField && previewState.data) {
+            dataField.value = previewState.data;
+        }
+    };
+});

@@ -1,0 +1,64 @@
+--- app/blueprints/docops.py
++++ app/blueprints/docops.py
+@@ -4,6 +4,7 @@
+ 
+ from ..extensions import db
+ from ..models import Documento, RigaDocumento, Movimento
++from ..utils import update_giacenza, get_giacenza
+ 
+ docops_bp = Blueprint("docops", __name__)
+ 
+@@ -81,13 +82,52 @@
+     if doc.status == "Annullato":
+         return jsonify({"ok": False, "error": "Documento annullato: non confermabile."}), 400
+     if doc.status == "Confermato":
+-        return jsonify({"ok": True, "status": doc.status, "msg": "Documento già confermato."})
+-
+-    has_movs = Movimento.query.filter_by(documento_id=doc.id).first() is not None
+-    if has_movs:
++        return jsonify({"ok": True, "status": doc.status})
++
++    try:
++        rows = doc.righe.order_by(RigaDocumento.id).all()
++        if not rows:
++            return jsonify({"ok": False, "error": "Nessuna riga nel documento."}), 400
++
++        # Aggiornamento giacenze + generazione movimenti
++        for r in rows:
++            q = D(str(getattr(r, "quantita", 0) or 0))
++            if q <= 0:
++                continue
++            if doc.tipo == "DDT_IN":
++                # Carico a magazzino
++                update_giacenza(r.articolo_id, doc.magazzino_id, q)
++                mv = Movimento(
++                    data=doc.data,
++                    articolo_id=r.articolo_id,
++                    quantita=q,
++                    tipo="carico",
++                    magazzino_arrivo_id=doc.magazzino_id,
++                    documento_id=doc.id,
++                )
++            elif doc.tipo == "DDT_OUT":
++                # Scarico da magazzino con controllo stock
++                if get_giacenza(r.articolo_id, doc.magazzino_id) < q:
++                    raise ValueError("Giacenza insufficiente per lo scarico.")
++                update_giacenza(r.articolo_id, doc.magazzino_id, -q)
++                mv = Movimento(
++                    data=doc.data,
++                    articolo_id=r.articolo_id,
++                    quantita=-q,
++                    tipo="scarico",
++                    magazzino_partenza_id=doc.magazzino_id,
++                    documento_id=doc.id,
++                )
++            else:
++                raise ValueError("Tipo documento non gestito.")
++            db.session.add(mv)
++
+         doc.status = "Confermato"
+         db.session.commit()
+         return jsonify({"ok": True, "status": doc.status})
++    except Exception as e:
++        db.session.rollback()
++        return jsonify({"ok": False, "error": str(e)}), 500

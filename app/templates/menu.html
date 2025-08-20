@@ -2,7 +2,7 @@
 {% block title %}Menu{% endblock %}
 {% block content %}
 {% set url_docs = url_for('documents.documents_list') %}
-{% set url_import = url_for('importing.import_pdf') %}
+{% set url_import = url_for('import_web.import_pdf') %}
 {% set url_ddtout = url_for('documents.new_out_form') %}
 <div class="grid md:grid-cols-3 gap-4">
   <a href="{{ url_docs }}" class="block border rounded-xl p-5 hover:shadow transition">

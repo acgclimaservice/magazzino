@@ -21,7 +21,7 @@ def workstation():
 
 @importing_bp.route('/import-pdf')
 def import_pdf():
-    return render_template('import_pdf.html')
+    return render_template('import/ddt.html')
 
 @importing_bp.route('/ddt-out/new')
 def ddt_out_new():
@@ -207,7 +207,7 @@ def import_ddt_confirm():
             commessa_id=commessa_id, 
             status='Bozza'
         )
-        db.session.add(doc)
+        # Salva riferimento DDT fornitore
         db.session.flush()
 
         # Righe
@@ -306,6 +306,9 @@ def api_ddt_out_create():
             return jsonify({"ok": False, "error": "Magazzino non trovato"}), 400
 
         doc = Documento(tipo='DDT_OUT', partner_id=partner.id, magazzino_id=mag.id, status='Bozza')
+        # Salva riferimento DDT fornitore
+        if parsed.get('numero_ddt') and parsed.get('data'):
+            doc.riferimento_fornitore = f"DDT {parsed.get('numero_ddt')} del {parsed.get('data')}"
         db.session.add(doc)
         db.session.flush()
         
