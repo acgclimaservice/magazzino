@@ -3,94 +3,80 @@
 
 {% block content %}
 <div class="bg-white p-4 rounded-xl shadow">
-  {% if not doc %}
-    <!-- Messaggio quando non ci sono documenti -->
-    <div class="text-center py-8">
-      <div class="text-gray-600 text-lg font-semibold mb-2">Nessun documento selezionato</div>
-      <p class="text-gray-600 mb-4">Seleziona un documento dall'archivio o creane uno nuovo.</p>
-      <div class="flex gap-2 justify-center">
-        <a class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700" href="{{ url_for('documents.documents_in') }}">
-          Vai all'archivio
-        </a>
-      </div>
+  <!-- Intestazione e Pulsanti -->
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-lg font-semibold" id="doc-title">Caricamento...</div>
+      <div class="text-sm text-gray-600">Stato: <span id="doc-status" class="font-medium">...</span></div>
     </div>
-  {% else %}
-    <!-- Contenuto normale quando il documento esiste -->
-    <div class="flex items-center justify-between">
-      <div>
-        <div class="text-lg font-semibold" id="doc-title">Caricamento...</div>
-        <div class="text-sm text-gray-600">Stato: <span id="doc-status" class="font-medium">...</span></div>
-      </div>
-      <div id="actions-bar" class="flex gap-2">
-        <a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for('documents.documents_in') }}">Torna all'archivio</a>
-      </div>
+    <div id="actions-bar" class="flex gap-2">
+      <a class="px-3 py-2 rounded bg-gray-100 text-gray-800 text-sm" href="{{ url_for('documents.documents_in') }}">Torna all'archivio</a>
     </div>
+  </div>
 
-    <hr class="my-4"/>
+  <hr class="my-4"/>
 
-    <!-- Dati Intestazione -->
-    <div id="doc-header" class="grid md:grid-cols-3 gap-2 text-sm text-gray-700 mb-4"></div>
+  <!-- Dati Intestazione -->
+  <div id="doc-header" class="grid md:grid-cols-3 gap-2 text-sm text-gray-700 mb-4"></div>
 
-    <!-- Allegati -->
-    <div id="allegati-container" class="mb-4"></div>
+  <!-- Allegati -->
+  <div id="allegati-container" class="mb-4"></div>
 
-    <!-- Righe del Documento -->
-    <div id="righe-container">
-      <div class="text-sm text-gray-500">Caricamento righe…</div>
+  <!-- Righe del Documento -->
+  <div id="righe-container">
+    <div class="text-sm text-gray-500">Caricamento righe…</div>
+  </div>
+
+  <!-- Form Aggiungi Riga (visibile solo in bozza) -->
+  <div id="add-line-form-container" class="hidden mt-6 pt-4 border-t">
+    <h3 class="font-semibold mb-2">Aggiungi Articolo</h3>
+    <div class="p-2 border rounded-md bg-gray-50 mb-4">
+        <label class="block text-xs text-gray-600">Cerca articolo esistente per pre-compilare i campi</label>
+        <input id="add-line-search" type="text" class="border rounded p-2 w-full text-sm" placeholder="Cerca per codice o descrizione...">
     </div>
-
-    <!-- Form Aggiungi Riga (visibile solo in bozza) -->
-    <div id="add-line-form-container" class="hidden mt-6 pt-4 border-t">
-      <h3 class="font-semibold mb-2">Aggiungi Articolo</h3>
-      <div class="p-2 border rounded-md bg-gray-50 mb-4">
-          <label class="block text-xs text-gray-600">Cerca articolo esistente per pre-compilare i campi</label>
-          <input id="add-line-search" type="text" class="border rounded p-2 w-full text-sm" placeholder="Cerca per codice o descrizione...">
-      </div>
-      <form id="add-line-form" class="space-y-3">
-          <input id="add-line-articolo-id" type="hidden">
-          <div class="grid md:grid-cols-3 gap-3">
-              <div class="md:col-span-1">
-                  <label class="block text-xs text-gray-600">Codice Interno (lascia vuoto per auto-generazione)</label>
-                  <input id="add-line-cod-int" type="text" class="border rounded p-2 w-full text-sm">
-              </div>
-              <div class="md:col-span-1">
-                  <label class="block text-xs text-gray-600">Codice Fornitore</label>
-                  <input id="add-line-cod-forn" type="text" class="border rounded p-2 w-full text-sm">
-              </div>
-              <div class="md:col-span-1">
-                  <label class="block text-xs text-gray-600">Mastrino</label>
-                  <select id="add-line-mastrino" class="border rounded p-2 w-full text-sm"></select>
-              </div>
-          </div>
-          <div>
-              <label class="block text-xs text-gray-600">Descrizione</label>
-              <input id="add-line-desc" type="text" class="border rounded p-2 w-full text-sm" required>
-          </div>
-          <div class="grid md:grid-cols-3 gap-3">
-              <div>
-                  <label class="block text-xs text-gray-600">Quantità</label>
-                  <input id="add-line-qty" type="number" step="0.001" class="border rounded p-2 w-full text-sm" value="1" required>
-              </div>
-              <div>
-                  <label class="block text-xs text-gray-600">UM</label>
-                  <input id="add-line-um" type="text" class="border rounded p-2 w-full text-sm" value="PZ">
-              </div>
-              <div>
-                  <label class="block text-xs text-gray-600">Prezzo Unitario</label>
-                  <input id="add-line-price" type="number" step="0.01" class="border rounded p-2 w-full text-sm" value="0">
-              </div>
-          </div>
-          <div class="text-right">
-              <button type="submit" class="px-4 py-2 rounded bg-blue-600 text-white text-sm">Aggiungi Riga</button>
-          </div>
-      </form>
-    </div>
-  {% endif %}
+    <form id="add-line-form" class="space-y-3">
+        <input id="add-line-articolo-id" type="hidden">
+        <div class="grid md:grid-cols-3 gap-3">
+            <div class="md:col-span-1">
+                <label class="block text-xs text-gray-600">Codice Interno (lascia vuoto per auto-generazione)</label>
+                <input id="add-line-cod-int" type="text" class="border rounded p-2 w-full text-sm">
+            </div>
+            <div class="md:col-span-1">
+                <label class="block text-xs text-gray-600">Codice Fornitore</label>
+                <input id="add-line-cod-forn" type="text" class="border rounded p-2 w-full text-sm">
+            </div>
+            <div class="md:col-span-1">
+                <label class="block text-xs text-gray-600">Mastrino</label>
+                <select id="add-line-mastrino" class="border rounded p-2 w-full text-sm"></select>
+            </div>
+        </div>
+        <div>
+            <label class="block text-xs text-gray-600">Descrizione</label>
+            <input id="add-line-desc" type="text" class="border rounded p-2 w-full text-sm" required>
+        </div>
+        <div class="grid md:grid-cols-3 gap-3">
+            <div>
+                <label class="block text-xs text-gray-600">Quantità</label>
+                <input id="add-line-qty" type="number" step="0.001" class="border rounded p-2 w-full text-sm" value="1" required>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600">UM</label>
+                <input id="add-line-um" type="text" class="border rounded p-2 w-full text-sm" value="PZ">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600">Prezzo Unitario</label>
+                <input id="add-line-price" type="number" step="0.01" class="border rounded p-2 w-full text-sm" value="0">
+            </div>
+        </div>
+        <div class="text-right">
+            <button type="submit" class="px-4 py-2 rounded bg-blue-600 text-white text-sm">Aggiungi Riga</button>
+        </div>
+    </form>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-{% if doc and doc.id %}
 <script>
 (function(){
   var docId = {{ doc.id }};
@@ -186,42 +172,21 @@
     });
   }
   
-  function loadData() { 
-    return apiCall('/api/documents/' + docId + '/json').then(function(data) { 
-      docData = data.doc; 
-      render(); 
-    }); 
-  }
+  function loadData() { return apiCall('/api/documents/' + docId + '/json').then(function(data) { docData = data.doc; render(); }); }
 
   // --- BINDING EVENTI ---
   function bindActionEvents() {
     var btnConfirm = document.getElementById('btn-confirm');
-    if (btnConfirm) { 
-      btnConfirm.addEventListener('click', function() { 
-        if (confirm('Confermare DDT? L\'operazione è irreversibile.')) { 
-          apiCall('/api/documents/' + docId + '/confirm', { method: 'POST' }).then(loadData); 
-        } 
-      }); 
-    }
+    if (btnConfirm) { btnConfirm.addEventListener('click', function() { if (confirm('Confermare DDT? L\'operazione è irreversibile.')) { apiCall('/api/documents/' + docId + '/confirm', { method: 'POST' }).then(loadData); } }); }
     var btnDeleteDraft = document.getElementById('btn-delete-draft');
-    if (btnDeleteDraft) { 
-      btnDeleteDraft.addEventListener('click', function() { 
-        if (confirm('Eliminare questa bozza?')) { 
-          apiCall('/api/documents/' + docId + '/delete-draft', { method: 'POST' }).then(function() { 
-            window.location.href = documentsUrl; 
-          }); 
-        } 
-      }); 
-    }
+    if (btnDeleteDraft) { btnDeleteDraft.addEventListener('click', function() { if (confirm('Eliminare questa bozza?')) { apiCall('/api/documents/' + docId + '/delete-draft', { method: 'POST' }).then(function() { window.location.href = documentsUrl; }); } }); }
   }
 
   function bindLineEvents() {
     document.querySelectorAll('.btn-delete-line').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         var lineId = e.target.dataset.lineId;
-        if (confirm('Eliminare questa riga?')) { 
-          apiCall('/api/documents/lines/' + lineId + '/delete', { method: 'POST' }).then(loadData); 
-        }
+        if (confirm('Eliminare questa riga?')) { apiCall('/api/documents/lines/' + lineId + '/delete', { method: 'POST' }).then(loadData); }
       });
     });
   }
@@ -279,9 +244,6 @@
               opt.textContent = m.codice + ' - ' + m.descrizione;
               sel.appendChild(opt);
           });
-      }).catch(function(e) {
-          // Se l'endpoint non esiste, ignora silenziosamente
-          console.log('Endpoint mastrini non disponibile:', e.message);
       });
   }
 
@@ -290,10 +252,4 @@
 
 })();
 </script>
-{% else %}
-<script>
-// Nessun documento - JavaScript disabilitato
-console.log('Pagina documento caricata senza documento valido');
-</script>
-{% endif %}
 {% endblock %}
