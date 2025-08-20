@@ -62,7 +62,8 @@ def _default_acquisto_mastrino():
     if m:
         return m.codice
     m = Mastrino(codice='0590001003', descrizione='ACQUISTO MATERIALE DI CONSUMO', tipo='ACQUISTO')
-    db.session.add(m); db.session.flush()
+    db.session.add(m)
+    db.session.flush()
     return m.codice
 
 def _default_ricavo_mastrino():
@@ -70,7 +71,8 @@ def _default_ricavo_mastrino():
     if m:
         return m.codice
     m = Mastrino(codice='0700001000', descrizione='RICAVI MERCI', tipo='RICAVO')
-    db.session.add(m); db.session.flush()
+    db.session.add(m)
+    db.session.flush()
     return m.codice
 
 # ===== Parsing generico (LLM / Fallback) =====
@@ -208,12 +210,17 @@ def import_ddt_confirm():
         for r in righe:
             sup_code = (r.get('codice') or '').strip()
             descr = (r.get('descrizione') or '').strip() or sup_code or "Articolo"
-            qty_raw = r.get('quantitÃ ') if 'quantitÃ ' in r else r.get('quantita') if 'quantita' in r else r.get('qty')
+            
+            # ===== CORREZIONE PRINCIPALE QUI =====
+            qty_raw = r.get('quantità') or r.get('quantitÃ ') or r.get('quantita') or r.get('qty')
+            
             um = unify_um(r.get('um'))
             qty_dec = _to_decimal(qty_raw) or Decimal('0')
             unit_price = _extract_unit_price(r, qty_dec)
+            
             if qty_raw in (None, ''):
-                raise ValueError(f"QuantitÃ  mancante per riga con codice fornitore '{sup_code or 'N/A'}'")
+                # Corretto il messaggio di errore
+                raise ValueError(f"Quantità mancante per riga con codice fornitore '{sup_code or 'N/A'}'")
 
             mastrino_row = (r.get('mastrino_codice') or '').strip() or mastrino_default
 
@@ -305,12 +312,17 @@ def api_ddt_out_create():
             try:
                 codice = (r.get('codice') or '').strip()
                 descr = (r.get('descrizione') or '').strip() or codice or 'Articolo'
-                qty_raw = r.get('quantitÃ ') if 'quantitÃ ' in r else r.get('quantita') if 'quantita' in r else r.get('qty')
+                
+                # ===== CORREZIONE PRINCIPALE APPLICATA ANCHE QUI =====
+                qty_raw = r.get('quantità') or r.get('quantitÃ ') or r.get('quantita') or r.get('qty')
+                
                 if qty_raw in (None, ''):
-                    raise ValueError("QuantitÃ  mancante")
+                    # Corretto il messaggio di errore
+                    raise ValueError("Quantità mancante")
 
                 um = unify_um(r.get('um'))
-                qty_dec = q_dec(str(qty_raw), field="QuantitÃ ")
+                # Corretto il campo nel messaggio di errore
+                qty_dec = q_dec(str(qty_raw), field="Quantità")
                 price = _extract_unit_price(r, qty_dec)
 
                 mastrino_row = (r.get('mastrino_codice') or '').strip() or default_m
@@ -324,7 +336,8 @@ def api_ddt_out_create():
                 if art is None:
                     internal = gen_internal_code('OUT', supplier_code=codice or None)
                     art = Articolo(codice_interno=internal, descrizione=descr)
-                    db.session.add(art); db.session.flush()
+                    db.session.add(art)
+                    db.session.flush()
 
                 riga = RigaDocumento(
                     documento_id=doc.id,
@@ -349,12 +362,7 @@ def api_ddt_out_create():
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 
-# ===== ENDPOINT /api/magazzini RIMOSSO - Era duplicato! =====
-# ===== ENDPOINT /api/clienti RIMOSSO - Era duplicato! =====
-# Ora usa solo quelli veri in lookups.py con formato {"ok": True, "data": [...]}
-
-# ===== ENDPOINT /api/mastrini RIMOSSO - Era duplicato! =====
-# Ora usa solo quello vero in lookups.py
+# ===== Endpoint rimossi perché duplicati (come da commenti originali) =====
 
 # ===== Rotte di test (clear) =====
 def _clear_docs_by_type(tipo: str):
@@ -414,7 +422,6 @@ def api_inventory_search():
     try:
         mag_id = request.args.get("magazzino_id", type=int)
         q = (request.args.get("q") or "").strip()
-        # FIX: Spostato 'default' dentro 'get'
         limit = min(max(request.args.get("limit", 25, type=int), 1), 100)
         if not mag_id:
             return jsonify({"ok": False, "error": "magazzino_id mancante"}), 400
