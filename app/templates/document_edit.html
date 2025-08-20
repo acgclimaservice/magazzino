@@ -77,7 +77,7 @@ function showError(message) {
     }
 }
 
-// Funzione di ricerca articoli (CORRETTA)
+// Funzione di ricerca articoli (SEMPLIFICATA)
 async function searchAndShowArticles(query) {
     const resultsContainer = document.getElementById('searchResults');
     const magId = '{{ doc.magazzino_id }}'; // Prende il magazzino dal documento
@@ -92,20 +92,19 @@ async function searchAndShowArticles(query) {
     try {
         const url = `/api/inventory/search?q=${encodeURIComponent(query)}&magazzino_id=${magId}`;
         const resp = await fetch(url);
-
-        if (!resp.ok) throw new Error(`Errore di rete: ${resp.status}`);
-        
         const data = await resp.json();
 
-        // CONTROLLO ERRORI CORRETTO
-        // Se la risposta ha un campo 'ok' impostato a false, è un errore
-        if (data && typeof data === 'object' && data.ok === false) {
-            throw new Error(data.error || 'Errore durante la ricerca.');
-        }
+        // Debug: log della risposta per capire il problema
+        console.log('Risposta ricevuta:', data);
 
-        // Se non è un array, probabilmente c'è un problema
+        // LOGICA SEMPLIFICATA: se non è un array, probabilmente è un errore
         if (!Array.isArray(data)) {
-            throw new Error('Formato risposta non valido dal server');
+            // Se ha un campo error, mostra quello
+            if (data && data.error) {
+                throw new Error(data.error);
+            }
+            // Altrimenti errore generico
+            throw new Error('Risposta non valida dal server');
         }
         
         resultsContainer.innerHTML = '';
@@ -134,9 +133,9 @@ async function searchAndShowArticles(query) {
         });
 
     } catch (err) {
+        console.error("Errore completo:", err);
         showError(err.message);
         resultsContainer.innerHTML = `<div class="p-2 text-red-500">Errore: ${err.message}</div>`;
-        console.error("Errore durante la ricerca:", err);
     }
 }
 
