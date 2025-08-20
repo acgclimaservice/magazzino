@@ -32,6 +32,7 @@ def _to_decimal(x):
             return Decimal(str(x))
         except Exception:
             return None
+    # Nota: il carattere 'â‚¬' indica un problema di encoding da correggere alla fonte se possibile
     s = str(x).strip().replace('â‚¬','').replace('\\xa0','').replace(' ', '').replace(',', '.')
     m = re.search(r'[-+]?\\d+(?:\\.\\d+)?', s)
     if not m:
@@ -211,7 +212,6 @@ def import_ddt_confirm():
             sup_code = (r.get('codice') or '').strip()
             descr = (r.get('descrizione') or '').strip() or sup_code or "Articolo"
             
-            # ===== CORREZIONE PRINCIPALE QUI =====
             qty_raw = r.get('quantità') or r.get('quantitÃ ') or r.get('quantita') or r.get('qty')
             
             um = unify_um(r.get('um'))
@@ -219,7 +219,6 @@ def import_ddt_confirm():
             unit_price = _extract_unit_price(r, qty_dec)
             
             if qty_raw in (None, ''):
-                # Corretto il messaggio di errore
                 raise ValueError(f"Quantità mancante per riga con codice fornitore '{sup_code or 'N/A'}'")
 
             mastrino_row = (r.get('mastrino_codice') or '').strip() or mastrino_default
@@ -313,15 +312,12 @@ def api_ddt_out_create():
                 codice = (r.get('codice') or '').strip()
                 descr = (r.get('descrizione') or '').strip() or codice or 'Articolo'
                 
-                # ===== CORREZIONE PRINCIPALE APPLICATA ANCHE QUI =====
                 qty_raw = r.get('quantità') or r.get('quantitÃ ') or r.get('quantita') or r.get('qty')
                 
                 if qty_raw in (None, ''):
-                    # Corretto il messaggio di errore
                     raise ValueError("Quantità mancante")
 
                 um = unify_um(r.get('um'))
-                # Corretto il campo nel messaggio di errore
                 qty_dec = q_dec(str(qty_raw), field="Quantità")
                 price = _extract_unit_price(r, qty_dec)
 
@@ -361,8 +357,6 @@ def api_ddt_out_create():
         current_app.logger.exception("Errore in api_ddt_out_create")
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
-
-# ===== Endpoint rimossi perché duplicati (come da commenti originali) =====
 
 # ===== Rotte di test (clear) =====
 def _clear_docs_by_type(tipo: str):
@@ -409,7 +403,7 @@ def clear_articles():
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 
-
+# ===== FUNZIONE DI RICERCA CORRETTA =====
 @importing_bp.route("/api/inventory/search", methods=["GET"])
 def api_inventory_search():
     try:
@@ -423,12 +417,18 @@ def api_inventory_search():
         mag_id = request.args.get("magazzino_id", type=int)
         q = (request.args.get("q") or "").strip()
         limit = min(max(request.args.get("limit", 25, type=int), 1), 100)
+        
+        # Se mag_id non è fornito, lo recuperiamo per poter mostrare la giacenza corretta
         if not mag_id:
-            return jsonify({"ok": False, "error": "magazzino_id mancante"}), 400
+             default_mag = Magazzino.query.order_by(Magazzino.id).first()
+             if default_mag:
+                 mag_id = default_mag.id
+             else:
+                 return jsonify({"ok": False, "error": "Nessun magazzino configurato"}), 400
 
-        qry = db.session.query(Giacenza, Articolo)\
-            .join(Articolo, Articolo.id == Giacenza.articolo_id)\
-            .filter(Giacenza.magazzino_id == mag_id, Giacenza.quantita > 0)
+        # NUOVA LOGICA: Cerca in tutto il catalogo Articoli e collega opzionalmente la Giacenza
+        qry = db.session.query(Articolo, Giacenza.quantita)\
+            .outerjoin(Giacenza, (Giacenza.articolo_id == Articolo.id) & (Giacenza.magazzino_id == mag_id))
 
         if q:
             toks = [t for t in q.split() if t]
@@ -442,17 +442,22 @@ def api_inventory_search():
 
         rows = qry.order_by(Articolo.descrizione.asc()).limit(limit).all()
         out = []
-        for g,a in rows:
+        # Loop aggiornato per gestire il nuovo formato della query (Articolo, quantita)
+        for a, g_quantita in rows:
             try:
-                qty = float(g.quantita)
+                # Se la giacenza è None (nessuna corrispondenza nell'outerjoin), la quantità è 0
+                qty = float(g_quantita) if g_quantita is not None else 0.0
             except Exception:
-                qty = None
+                qty = 0.0
+            
             out.append({
                 "articolo_id": a.id,
                 "codice_interno": a.codice_interno,
                 "codice_fornitore": a.codice_fornitore,
                 "descrizione": a.descrizione,
-                "giacenza": qty
+                "giacenza": qty,
+                # Aggiungo il costo per pre-compilare il campo prezzo nell'interfaccia
+                "last_cost": float(a.last_cost) if a.last_cost is not None else 0.0
             })
         return jsonify(out)
     except Exception as e:
