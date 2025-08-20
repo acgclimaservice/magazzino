@@ -22,7 +22,22 @@ def _safe_float(val, default=0.0):
         return float(val)
     except (ValueError, TypeError):
         return float(default)
-
+@docops_bp.get("/api/mastrini")
+def api_mastrini():
+    """
+    Restituisce la lista dei mastrini per il dropdown.
+    """
+    tipo = request.args.get("tipo", "ACQUISTO")
+    
+    # Per ora restituiamo alcuni mastrini di esempio
+    # Puoi implementare la logica vera in seguito
+    mastrini_esempio = [
+        {"codice": "001a", "descrizione": "Costi generali"},
+        {"codice": "002a", "descrizione": "Materiali"},
+        {"codice": "003a", "descrizione": "Servizi"},
+    ]
+    
+    return jsonify(mastrini_esempio)
 
 def _row_to_front_dict(r: RigaDocumento):
     """
