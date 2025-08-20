@@ -1,0 +1,377 @@
+from app.services.parser_fix import extract_basic_info
+import os, re, json, time
+from decimal import Decimal
+from typing import Tuple, Dict, Any, Optional
+import requests
+import threading
+import random
+from pypdf import PdfReader
+
+
+# --- LLM helpers (rate-limit & error handling) ---
+_LLM_LAST_TS = 0.0
+_LLM_LOCK = threading.Lock()
+
+def _llm_min_interval() -> float:
+    try:
+        return float(os.environ.get("LLM_MIN_INTERVAL_SECONDS", "1.2"))
+    except Exception:
+        return 1.2
+
+def _respect_rate_limit():
+    global _LLM_LAST_TS
+    with _LLM_LOCK:
+        now = time.time()
+        lag = _llm_min_interval() - (now - _LLM_LAST_TS)
+        if lag > 0:
+            time.sleep(lag)
+            now = time.time()
+        _LLM_LAST_TS = now
+
+def _sanitize_http_error(err: Exception) -> Exception:
+    # Avoid leaking secrets
+    msg = str(err)
+    msg = re.sub(r"key=([A-Za-z0-9_\-]+)", "key=***", msg)
+    if hasattr(err, 'response') and getattr(err, 'response', None) is not None:
+        try:
+            status = err.response.status_code
+            reason = err.response.reason
+        except Exception:
+            status = None; reason = None
+        if status == 429:
+            ra = err.response.headers.get('Retry-After', '')
+            if ra:
+                return RuntimeError(f"HTTP 429 Too Many Requests (Retry-After: {ra}s)")
+            return RuntimeError("HTTP 429 Too Many Requests (rate limit)")
+        if status and 500 <= status < 600:
+            return RuntimeError(f"HTTP {status} {reason or 'Server Error'}")
+        if status and 400 <= status < 500:
+            try:
+                j = err.response.json()
+                em = j.get('error', {}).get('message') or j.get('message')
+                if em:
+                    return RuntimeError(f"HTTP {status}: {em}")
+            except Exception:
+                pass
+            return RuntimeError(f"HTTP {status} {reason or ''}".strip())
+    return RuntimeError(msg)
+# ========== PDF TEXT EXTRACTION ==========
+
+def extract_text_from_pdf(file_storage) -> str:
+    """Estrae testo dal PDF (FileStorage o file-like)."""
+    try:
+        file_storage.stream.seek(0)
+    except Exception:
+        pass
+    reader = PdfReader(file_storage.stream if hasattr(file_storage, "stream") else file_storage)
+    chunks = []
+    for page in reader.pages:
+        try:
+            chunks.append(page.extract_text() or "")
+        except Exception:
+            continue
+    text = "\n".join(chunks)
+    # normalizza spazi
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{2,}", "\n", text)
+    return text.strip()
+
+# ========== LLM PROMPTING ==========
+
+def build_prompt(kind: str, raw_text: str) -> str:
+    kind = (kind or "").lower()
+    schema = {
+        "ddt": (
+            "Restituisci un JSON compatto con le chiavi:\n"
+            "- data: data del DDT nel formato YYYY-MM-DD\n" +
+        "- numero_ddt: numero del DDT fornitore\n"
+            "- fornitore: ragione sociale\n"
+            "- righe: lista di oggetti con:\n"
+            "  - codice: codice articolo del fornitore (stringa, anche alfanumerica)\n"
+            "  - descrizione: descrizione articolo\n"
+            "  - quantità: numero\n"
+            "  - um: unita' di misura (es. PZ, NR, MT)\n"
+            "  - prezzo_unitario: numero (senza €)"
+        ),
+        "materiali": "Estrai una lista di materiali analogamente al DDT.",
+        "ticket": "Estrai un JSON con meta e righe intervento."
+    }
+    guide = schema.get(kind, "Estrai un JSON strutturato pertinente.")
+    return (
+        "Analizza il testo di un PDF.\n"
+        "Linee guida:\n"
+        f"{guide}\n\n"
+        "Testo PDF:\n---\n"
+        f"{raw_text}\n"
+        "---\n\n"
+        "Rispondi SOLO con JSON valido senza testo aggiuntivo."
+    )
+
+def _api_key() -> Optional[str]:
+    return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+
+def _llm_timeout() -> int:
+    try:
+        return int(os.environ.get("LLM_TIMEOUT_SECONDS", "60"))
+    except Exception:
+        return 60
+
+def _llm_retries() -> int:
+    try:
+        return int(os.environ.get("LLM_MAX_RETRIES", "5"))
+    except Exception:
+        return 2
+
+def _resolve_model(model: Optional[str] = None) -> str:
+    # prefer ENV GEMINI_MODEL if provided
+    env_model = os.environ.get('GEMINI_MODEL')
+    return (model or env_model or 'gemini-1.5-flash')
+
+def _gemini_endpoint(model: str = "gemini-1.5-flash") -> str:
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+def call_gemini(prompt: str, model: Optional[str] = None) -> Dict[str, Any]:
+    """Chiama Gemini; solleva eccezione in caso di problemi."""
+    key = _api_key()
+    if not key:
+        raise RuntimeError("Chiave API Gemini mancante (GEMINI_API_KEY o GOOGLE_API_KEY).")
+    model = _resolve_model(model)
+    url = _gemini_endpoint(model)
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2}
+    }
+    headers = {"Content-Type": "application/json"}
+    last_err = None
+    for attempt in range(_llm_retries() + 1):
+        try:
+            resp = requests.post(url, params={"key": key}, json=payload, headers=headers, timeout=(10, _llm_timeout()))
+            resp.raise_for_status()
+            data = resp.json()
+            # estrai testo
+            text = None
+            try:
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+            except Exception:
+                # fallback: alcuni modelli usano un campo diverso
+                text = json.dumps(data)
+            # prova a isolare JSON
+            parsed = _extract_json(text)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"raw": text}
+        except Exception as e:
+            last_err = e
+            if attempt < _llm_retries():
+                time.sleep(1.5 * (attempt + 1))
+            else:
+                raise
+    raise last_err  # non si arriva
+
+_json_block_re = re.compile(r"\{.*\}", re.DOTALL)
+_code_fence_re = re.compile(r"```(?:json)?(.*?)```", re.DOTALL | re.IGNORECASE)
+
+def _extract_json(text: str):
+    if not text:
+        return None
+    m = _code_fence_re.search(text)
+    if m:
+        s = m.group(1).strip()
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+    m = _json_block_re.search(text)
+    if m:
+        s = m.group(0).strip()
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+    return None
+
+# ========== FALLBACK PARSER (REGEX/HEURISTIC) ==========
+
+def parse_ddt_with_fallback(raw_text: str) -> Tuple[Dict[str, Any], str, str]:
+    """
+    Tenta LLM; se fallisce per timeout o rete, usa un parser euristico locale.
+    Ritorna: (data_dict, method, note)
+      - method: 'gemini' | 'fallback'
+      - note: dettaglio dell'errore o della strategia usata
+    """
+    prompt = build_prompt("ddt", raw_text)
+    try:
+        out = call_gemini(prompt)
+        if isinstance(out, dict) and ("righe" in out or "data" in out):
+            return out, "gemini", ""
+        # se la risposta non è nel formato atteso, passa al fallback
+        fb = fallback_parse_ddt_text(raw_text)
+        return fb, "fallback", "Output LLM non strutturato; applicato parser locale."
+    except Exception as e:
+        fb = fallback_parse_ddt_text(raw_text)
+        return fb, "fallback", f"LLM non disponibile: {_sanitize_http_error(e)}. Applicato parser locale."
+
+def fallback_parse_ddt_text(text: str) -> Dict[str, Any]:
+    """
+    Parser semplice per DDT. Cerca:
+     - data (YYYY-MM-DD / DD/MM/YYYY)
+     - fornitore (riga maiuscola con SRL/SPA o 'fornitore: ...')
+     - righe: codice, descrizione, quantita, um, prezzo_unitario
+    """
+    # Data
+    data = None
+    m = re.search(r"\b(\d{4})[-/.](\d{2})[-/.](\d{2})\b", text)
+    if m:
+        data = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    else:
+        m = re.search(r"\b(\d{2})[-/.](\d{2})[-/.](\d{4})\b", text)
+        if m:
+            data = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+
+    # Fornitore
+    fornitore = None
+    # esplicito
+    m = re.search(r"fornitore[:\s]+([A-Z0-9 .,'&/()-]{3,})", text, re.IGNORECASE)
+    if m:
+        fornitore = m.group(1).strip()
+    if not fornitore:
+        # cerca riga con SRL/SPA/S.P.A.
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        cand = [l for l in lines if re.search(r"\b(SRL|S\.R\.L\.|SPA|S\.P\.A\.)\b", l, re.IGNORECASE)]
+        if cand:
+            fornitore = cand[0]
+    if fornitore:
+        fornitore = re.sub(r"\s{2,}", " ", fornitore).strip().upper()
+
+    # Righe: usa una strategia a più pattern
+    righe = []
+    lines = [l for l in text.splitlines() if l.strip()]
+    # pattern generico: CODICE DESCRIZIONE ... QTA UM PREZZO/TOTALE
+    rgx = re.compile(
+        r"^(?P<cod>[A-Z0-9\-/.]{5,})\s+(?P<desc>.+?)\s+(?P<qty>\d+(?:[.,]\d+)?)\s+(?P<um>[A-Z]{1,3})\s+(?P<price>\d+(?:[.,]\d+)?)$"
+    )
+    # secondario: CODICE DESCRIZIONE ... PREZZO x QTA UM
+    rgx2 = re.compile(
+        r"^(?P<cod>[A-Z0-9\-/.]{5,})\s+(?P<desc>.+?)\s+(?P<price>\d+(?:[.,]\d+)?)\s*x\s*(?P<qty>\d+(?:[.,]\d+)?)\s*(?P<um>[A-Z]{1,3})\b"
+    )
+    # ripassa tutte le righe per cercare match
+    for l in lines:
+        l1 = re.sub(r"\s{2,}", " ", l.strip())
+        m1 = rgx.match(l1)
+        m2 = rgx2.match(l1) if not m1 else None
+        cod = desc = um = None
+        qty = price = None
+        if m1:
+            cod = m1.group("cod")
+            desc = m1.group("desc")
+            qty = m1.group("qty")
+            um = m1.group("um")
+            price = m1.group("price")
+        elif m2:
+            cod = m2.group("cod")
+            desc = m2.group("desc")
+            qty = m2.group("qty")
+            um = m2.group("um")
+            price = m2.group("price")
+        else:
+            continue
+        # sanifica
+        if qty:
+            qty = qty.replace(",", ".")
+        if price:
+            price = price.replace(",", ".")
+        # filtra righe poco sensate
+        if not desc or len(desc) < 3:
+            continue
+        try:
+            qv = float(qty) if qty else 0.0
+        except Exception:
+            qv = 0.0
+        try:
+            pv = float(price) if price else 0.0
+        except Exception:
+            pv = 0.0
+        # UM fallback
+        if not um or len(um) > 4:
+            um = "PZ"
+        righe.append({
+            "codice": (cod or "").strip(),
+            "descrizione": desc.strip(),
+            "quantità": qv,
+            "um": um.strip(),
+            "prezzo_unitario": pv
+        })
+
+    # se non ha trovato righe, prova un'euristica "colonne spezzate": numero codice + descr fino a qty
+    if not righe:
+        tmp = []
+        simple = re.compile(r"(?P<cod>\b[A-Z0-9\-/.]{5,})\s+(?P<desc>[^0-9]{3,})\s+(?P<qty>\d+(?:[.,]\d+)?)\s+(?P<um>[A-Z]{1,3})", re.IGNORECASE)
+        for l in lines:
+            l2 = re.sub(r"\s{2,}", " ", l.strip())
+            m = simple.search(l2)
+            if m:
+                cod = m.group("cod")
+                desc = m.group("desc")
+                qty = m.group("qty").replace(",", ".")
+                um = m.group("um")
+                tmp.append({
+                    "codice": cod.strip(),
+                    "descrizione": desc.strip(),
+                    "quantità": float(qty),
+                    "um": um.strip(),
+                    "prezzo_unitario": 0.0
+                })
+        righe = tmp
+
+    return {
+        "data": data,
+        "fornitore": fornitore,
+        "righe": righe
+    }
+
+def parse_ddt_duotermica(text: str) -> Dict[str, Any]:
+    """
+    Parser DUOTERMICA: mappa QUANT. -> quantità, NETTO CAD. -> prezzo_unitario.
+    Strategia: parsing da destra
+      - ultimo numero = prezzo unitario (NETTO CAD.)
+      - penultimo numero = quantità (QUANT.)
+      - prima del penultimo cerchiamo UM (PZ/NR/…)
+      - descrizione = il resto a sinistra
+    """
+    import re
+    lines = [re.sub(r"\s{2,}", " ", (l or "").strip()) for l in (text or "").splitlines() if (l or "").strip()]
+    UM_PAT = r"(?:PZ|PCS|PEZZO|PEZZI|NR|N|KG|G|L|LT|ML|M|MT)"
+    righe: List[Dict[str, Any]] = []
+    for l in lines:
+        m0 = re.match(r"^(?P<cod>[A-Z0-9][A-Z0-9\-/.]{2,})\s+(?P<rest>.+)$", l, flags=re.IGNORECASE)
+        if not m0:
+            continue
+        cod = m0.group("cod").strip()
+        rest = m0.group("rest")
+
+        nums = list(re.finditer(r"(\d+(?:[.,]\d+)?)", rest))
+        if len(nums) < 2:
+            continue
+        price_txt = nums[-1].group(1)
+        qty_txt = nums[-2].group(1)
+        price = float(price_txt.replace(",", "."))
+        qty = float(qty_txt.replace(",", "."))
+
+        left_part = rest[:nums[-2].span()[0]].rstrip()
+        m_um = re.search(rf"(?:^|\s)({UM_PAT})(?:\s*)$", left_part, flags=re.IGNORECASE)
+        um = (m_um.group(1) if m_um else "").upper()
+        descr = left_part[:m_um.start()].strip() if m_um else left_part.strip()
+        if not descr:
+            descr = rest.strip()
+
+        righe.append({
+            "codice": cod,
+            "descrizione": descr,
+            "um": um or "PZ",
+            "quantità": qty,
+            "prezzo_unitario": price,
+            # evidenza per debug UI se serve
+            "DUOTERMICA_QUANT": qty_txt,
+            "DUOTERMICA_NETTO_CAD": price_txt
+        })
+    return {"righe": righe}

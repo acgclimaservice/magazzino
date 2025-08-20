@@ -36,7 +36,6 @@ class ImportService:
             rel_path, abs_path = self.file_service.save_upload(file_storage, category="incoming_ddt")
             
             # Parsing con fallback
-            data, method, note = self.parsing_service.parse_ddt_with_fallback(raw_text)
             
             return {
                 "ok": True,

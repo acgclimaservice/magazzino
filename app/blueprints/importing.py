@@ -1,4 +1,3 @@
-from ..services.parsing_service import parse_ddt_with_fallback
 from ..services.supplier_parsers import parse_supplier_specific
 from flask import Blueprint, render_template, request, jsonify, url_for, current_app, send_from_directory, abort
 from sqlalchemy.exc import IntegrityError
@@ -7,7 +6,6 @@ from werkzeug.utils import safe_join
 from ..extensions import db
 from ..models import Articolo, Magazzino, Partner, Documento, RigaDocumento, Movimento, Mastrino, Allegato
 from ..utils import parse_it_date, q_dec, money_dec, next_doc_number, unify_um, supplier_prefix, gen_internal_code
-from ..services.parsing_service import extract_text_from_pdf, build_prompt, call_gemini, parse_ddt_with_fallback, parse_ddt_duotermica
 from ..services.supplier_parsers import parse_supplier_specific
 from ..services.file_service import save_upload, move_upload_to_document
 import os, re
@@ -137,19 +135,16 @@ def import_ddt_preview():
         righe = d.get("righe") or d.get("articoli") or []
         
         vendor = ((d.get("fornitore") or "") or "").upper()
-        if "DUOTERMICA" in vendor:
             rel = (payload.get("uploaded_file") or "").lstrip("/\\")
             if rel:
                 try:
                     import os
                     abs_path = os.path.join(current_app.root_path, rel)
                     raw = extract_text_from_pdf(abs_path)
-                    vparsed = parse_ddt_duotermica(raw) or {}
                     vrows = vparsed.get("righe") or []
                     if vrows:
                         righe = vrows
                 except Exception as e:
-                    current_app.logger.warning(f"DUOTERMICA preview override fallito: {e}")
         
         for r in righe:
             r["um"] = unify_um(r.get("um"))

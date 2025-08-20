@@ -1,14 +1,5 @@
+cat > app/templates/dashboard.html << 'EOF'
 {% extends "_base.html" %}
-<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
-  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
-  </form>
-</div>
-<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
-  <h3 class="font-semibold text-red-800">⚠️ RESET TEST</h3>
-  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati?')">
-    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">CANCEL PROVVISORIO</button>
-  </form>
-</div>
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <div class="grid md:grid-cols-3 gap-4">
@@ -23,7 +14,7 @@
   <div class="bg-white p-4 rounded-xl shadow">
     <div class="text-gray-500 text-sm">Azioni rapide</div>
     <div class="mt-2 flex flex-wrap gap-2">
-<a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ url_for('documents.documents_in') }}">Vai ai documenti</a>
+      <a class="px-3 py-2 rounded bg-indigo-600 text-white text-sm" href="{{ url_for('documents.documents_in') }}">Vai ai documenti</a>
       <a class="px-3 py-2 rounded bg-emerald-600 text-white text-sm" href="{{ url_for('importing.import_pdf') }}">Importa PDF</a>
     </div>
   </div>
@@ -56,23 +47,12 @@
     </table>
   </div>
 </div>
-<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
-  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
-  </form>
-</div>
+
 <div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
   <h3 class="font-semibold text-red-800">⚠️ RESET TEST</h3>
-  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati?')">
-    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">CANCEL PROVVISORIO</button>
+  <form method="post" action="{{ url_for('core.reset_all_data') }}" onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
+    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">🗑️ CANCEL PROVVISORIO</button>
   </form>
 </div>
 {% endblock %}
-
-<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
-  <form method="post" action="{{ url_for('core.reset_all_data') }}" 
-        onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
-    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">
-<div class="bg-red-100 border border-red-300 p-4 rounded-xl mt-4">
-  <form method="post" action="{{ url_for('core.reset_all_data') }}" 
-        onsubmit="return confirm('Cancellare TUTTI i dati? Operazione irreversibile!')">
-    <button class="mt-2 px-4 py-2 bg-red-600 text-white rounded">
+EOF

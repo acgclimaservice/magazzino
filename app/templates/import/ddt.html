@@ -334,3 +334,26 @@ async function callClear(url) {
 }
 </script>
 {% endblock %}
+<script>
+// Aggiungi debug info
+window.addEventListener('error', function(e) {
+    console.error('Errore globale:', e);
+});
+
+// Modifica gestione errore parsing
+async function handleParseError(error) {
+    console.error('Parse error details:', error);
+    
+    // Mostra messaggio più informativo
+    const msg = `
+        Errore nel parsing del PDF. 
+        Possibili cause:
+        - Il PDF non è un DDT valido
+        - Il formato non è riconosciuto
+        - Il PDF è danneggiato o protetto
+        
+        Suggerimento: Inserisci i dati manualmente.
+    `;
+    alert(msg);
+}
+</script>

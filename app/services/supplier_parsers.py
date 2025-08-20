@@ -1,2 +1,2 @@
 def parse_supplier_specific(text):
-    return {"righe": []}, "fallback"
+    return {"righe": []}, "Parser disabilitato"

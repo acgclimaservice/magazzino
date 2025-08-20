@@ -102,11 +102,11 @@
     docStatus.textContent = docData.status;
     docHeader.innerHTML = '<div><span class="text-gray-500">Controparte:</span> ' + (docData.partner_nome || 'N/D') + '</div>' +
                           '<div><span class="text-gray-500">Magazzino:</span> ' + (docData.magazzino_info || 'N/D') + '</div>' +
-                          '<div><span class="text-gray-500">Data Documento:</span> ' + dataDoc + '</div>' +
+                          '<div><span class="text-gray-500">Data Documento:</span> ' + (docData.data || "N/D") + '</div>' +
                           (docData.riferimento_fornitore ? '<div><span class="text-gray-500">DDT Fornitore:</span> ' + docData.riferimento_fornitore + '</div>' : '');
     docHeader.innerHTML = '<div><span class="text-gray-500">Controparte:</span> ' + (docData.partner_nome || 'N/D') + '</div>' +
                           '<div><span class="text-gray-500">Magazzino:</span> ' + (docData.magazzino_info || 'N/D') + '</div>' +
-                          '<div><span class="text-gray-500">Data Documento:</span> ' + dataDoc + '</div>';
+                          '<div><span class="text-gray-500">Data Documento:</span> ' + (docData.data || "N/D") + '</div>';
                           + (docData.riferimento_fornitore ? '<div><span class="text-gray-500">DDT Fornitore:</span> ' + docData.riferimento_fornitore + '</div>' : '')
     renderAllegati();
     renderRighe();
